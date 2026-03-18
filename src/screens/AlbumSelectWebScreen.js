@@ -1150,7 +1150,7 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
         </View>
         <TouchableOpacity onPress={handleTitleTap} activeOpacity={1}>
           <Text style={styles.headerSubtitle}>
-            表示したいアルバムを選んでください
+            表示したいアルバムを選んでください（長押しでメニュー）
           </Text>
         </TouchableOpacity>
       </View>
