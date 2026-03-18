@@ -24,7 +24,7 @@
     "expo-linking": "~8.0.11",
     "expo-media-library": "~18.2.1",
     "expo-status-bar": "~3.0.9",
-    "expo-updates": "^55.0.14",
+    "expo-updates": "~29.0.16",
     "expo-web-browser": "~15.0.10",
     "piexifjs": "^1.0.6",
     "react": "19.1.0",
