@@ -1254,7 +1254,9 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
   header: {
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
   },
