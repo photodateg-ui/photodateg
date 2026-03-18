@@ -1,0 +1,65 @@
+{
+  "expo": {
+    "name": "PhotoDate G",
+    "slug": "photodateg",
+    "version": "0.2.3",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.photodateg.app",
+      "buildNumber": "11",
+      "appleTeamId": "US3QET7HJR",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "photodateg",
+              "com.googleusercontent.apps.483467707926-haidkv7t2d0vg3pgk7ushjkovvqukdn5"
+            ]
+          }
+        ]
+      }
+    },
+    "scheme": "photodateg",
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "写真をGoogle Photosにアップロードするために使用します"
+        }
+      ]
+    ],
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/b6d12337-e2f5-4643-adad-5a9e4672922e"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "b6d12337-e2f5-4643-adad-5a9e4672922e"
+      }
+    },
+    "owner": "misettei"
+  }
+}
