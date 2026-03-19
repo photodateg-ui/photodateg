@@ -1160,6 +1160,7 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
         renderItem={renderAlbumItem}
         keyExtractor={(item) => item.mediaKey}
         numColumns={2}
+        style={styles.albumFlatList}
         contentContainerStyle={styles.albumList}
         refreshControl={
           <RefreshControl
@@ -1285,6 +1286,9 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 14,
     color: '#666',
+  },
+  albumFlatList: {
+    flex: 1,
   },
   albumList: {
     padding: 10,
