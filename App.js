@@ -3,6 +3,14 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Updates from 'expo-updates';
+
+// OTAチャンネル設定
+if (!__DEV__) {
+  Updates.setUpdateRequestHeadersOverride({
+    'expo-channel-name': 'production'
+  });
+}
 import { sessionManager } from './src/services/googlePhotosWebApi';
 
 // 既存の画面（OAuth方式）

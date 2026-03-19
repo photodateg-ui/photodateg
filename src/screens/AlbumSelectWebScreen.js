@@ -46,7 +46,7 @@ const STORAGE_KEYS = {
   APP_CREATED_ALBUMS: '@photov_app_created_albums', // PhotoVで作成したアルバムのリスト
 };
 
-const BUILD_VERSION = 'v0.2.2 (2026-02-24 batchAddMediaItems復元)';
+const BUILD_VERSION = 'v0.3.1 (2026-03-20 OTA fix)';
 // Force rebuild
 
 /**
