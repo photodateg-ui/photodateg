@@ -46,7 +46,7 @@ const STORAGE_KEYS = {
   APP_CREATED_ALBUMS: '@photov_app_created_albums', // PhotoVで作成したアルバムのリスト
 };
 
-const BUILD_VERSION = 'v0.3.44';
+const BUILD_VERSION = 'v0.3.45';
 // Force rebuild
 
 /**
@@ -865,7 +865,11 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
               <Text style={styles.sharedBadgeText}>共有</Text>
             </View>
           )}
-{/* 操作不可バッジは一旦削除 - createdByApp設定の問題を後で修正 */}
+          {!item.createdByApp && (
+            <View style={styles.readOnlyBadge}>
+              <Text style={styles.readOnlyBadgeText}>操作不可</Text>
+            </View>
+          )}
         </View>
         <View style={styles.albumInfo}>
           <Text style={styles.albumTitle} numberOfLines={2}>
