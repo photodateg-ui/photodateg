@@ -46,7 +46,7 @@ const STORAGE_KEYS = {
   APP_CREATED_ALBUMS: '@photov_app_created_albums', // PhotoVで作成したアルバムのリスト
 };
 
-const BUILD_VERSION = 'v0.3.45';
+const BUILD_VERSION = 'v0.3.46';
 // Force rebuild
 
 /**
@@ -196,6 +196,8 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
     });
     if (!sessionData || !webViewRef.current || !ready) {
       console.log('WebViewまたはセッションが準備できていません');
+      setIsRefreshing(false);
+      setIsLoading(false);
       return;
     }
 
