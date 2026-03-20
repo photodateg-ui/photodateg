@@ -40,9 +40,11 @@ export function generateApiRequestScript(requestId, rpcid, requestData, sessionD
           method: 'POST',
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+            'Cache-Control': 'no-cache, no-store',
           },
           body: '${requestBody.replace(/'/g, "\\'")}',
           credentials: 'include',
+          cache: 'no-store',
         });
         
         if (!response.ok) {
