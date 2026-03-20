@@ -46,7 +46,7 @@ const STORAGE_KEYS = {
   APP_CREATED_ALBUMS: '@photov_app_created_albums', // PhotoVで作成したアルバムのリスト
 };
 
-const BUILD_VERSION = 'v0.3.54-debug';
+const BUILD_VERSION = 'v0.3.55';
 // Force rebuild
 
 /**
@@ -274,8 +274,7 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
         console.warn('APP_CREATED_ALBUMS読み込みエラー:', e);
       }
 
-      // デバッグ: 取得したアルバム数を表示（一時的）
-      Alert.alert('デバッグ', `取得: ${sortedAlbums.length}件\n${sortedAlbums.map(a => a.title).slice(0, 5).join('\n')}`);
+      // デバッグ用Alertは削除
       
       setAlbums(sortedAlbums);
     } catch (err) {
@@ -317,17 +316,10 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
   }, [sessionData, isWebViewReady]);
 
   const onRefresh = useCallback(() => {
-    console.log('🔄 onRefresh called:', { isWebViewReady, hasSessionData: !!sessionData });
-    setIsRefreshing(true);
-    if (isWebViewReady && sessionData && webViewRef.current) {
-      // WebViewを一度リロードしてから、少し待ってloadAlbums
-      setIsWebViewReady(false);
-      webViewRef.current.reload();
-      // WebViewのonLoadEndでisWebViewReadyがtrueになり、loadAlbumsが呼ばれる
-    } else {
-      setIsRefreshing(false);
-    }
-  }, [isWebViewReady, sessionData]);
+    console.log('🔄 onRefresh called - replacing screen');
+    // 画面全体を再読み込みして最新データを取得
+    navigation.replace('AlbumSelectWeb');
+  }, [navigation]);
 
   // デバッグメニュー: タイトルを10回タップで表示（リリース向けに隠蔽強化）
   const handleTitleTap = useCallback(() => {
