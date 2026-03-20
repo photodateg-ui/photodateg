@@ -46,7 +46,7 @@ const STORAGE_KEYS = {
   APP_CREATED_ALBUMS: '@photov_app_created_albums', // PhotoVで作成したアルバムのリスト
 };
 
-const BUILD_VERSION = 'v0.3.53-debug';
+const BUILD_VERSION = 'v0.3.54-debug';
 // Force rebuild
 
 /**
@@ -123,14 +123,17 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
     }
   }, [route?.params?.autoReselect, navigation]);
 
-  // WebViewがReadyになったらアルバム取得（初期データがない場合のみ）
+  // WebViewがReadyになったらアルバム取得
   useEffect(() => {
-    if (isWebViewReady && albums.length === 0 && sessionData && isLoading) {
-      console.log('📥 Triggering loadAlbums (WebView ready, no albums)');
-      loadAlbums(true);  // forceReady=true でクロージャ問題を回避
+    if (isWebViewReady && sessionData) {
+      // 初期読み込み、またはリフレッシュ後
+      if (albums.length === 0 || isRefreshing) {
+        console.log('📥 Triggering loadAlbums (WebView ready)', { albumsLength: albums.length, isRefreshing });
+        loadAlbums(true);  // forceReady=true でクロージャ問題を回避
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isWebViewReady, albums.length, sessionData, isLoading]);
+  }, [isWebViewReady, sessionData, isRefreshing]);
 
   const loadSessionAndRedirect = async () => {
     try {
@@ -316,17 +319,15 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
   const onRefresh = useCallback(() => {
     console.log('🔄 onRefresh called:', { isWebViewReady, hasSessionData: !!sessionData });
     setIsRefreshing(true);
-    if (isWebViewReady && sessionData) {
-      loadAlbums();
+    if (isWebViewReady && sessionData && webViewRef.current) {
+      // WebViewを一度リロードしてから、少し待ってloadAlbums
+      setIsWebViewReady(false);
+      webViewRef.current.reload();
+      // WebViewのonLoadEndでisWebViewReadyがtrueになり、loadAlbumsが呼ばれる
     } else {
-      // WebView未準備の場合は再初期化を試行
-      console.log('🔄 WebView not ready, attempting reload');
-      if (webViewRef.current) {
-        webViewRef.current.reload();
-      }
       setIsRefreshing(false);
     }
-  }, [loadAlbums, isWebViewReady, sessionData]);
+  }, [isWebViewReady, sessionData]);
 
   // デバッグメニュー: タイトルを10回タップで表示（リリース向けに隠蔽強化）
   const handleTitleTap = useCallback(() => {
