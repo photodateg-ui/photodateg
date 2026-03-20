@@ -46,7 +46,7 @@ const STORAGE_KEYS = {
   APP_CREATED_ALBUMS: '@photov_app_created_albums', // PhotoVで作成したアルバムのリスト
 };
 
-const BUILD_VERSION = 'v0.3.51';
+const BUILD_VERSION = 'v0.3.52-debug';
 // Force rebuild
 
 /**
@@ -271,6 +271,9 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
         console.warn('APP_CREATED_ALBUMS読み込みエラー:', e);
       }
 
+      // デバッグ: 取得したアルバム数を表示（一時的）
+      Alert.alert('デバッグ', `取得: ${sortedAlbums.length}件\n${sortedAlbums.map(a => a.title).slice(0, 5).join('\n')}`);
+      
       setAlbums(sortedAlbums);
     } catch (err) {
       console.error('アルバム取得エラー:', err);
