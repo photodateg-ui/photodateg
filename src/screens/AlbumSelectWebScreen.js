@@ -46,7 +46,7 @@ const STORAGE_KEYS = {
   APP_CREATED_ALBUMS: '@photov_app_created_albums', // PhotoVで作成したアルバムのリスト
 };
 
-const BUILD_VERSION = 'v0.3.50';
+const BUILD_VERSION = 'v0.3.51';
 // Force rebuild
 
 /**
@@ -501,22 +501,11 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
       
       Alert.alert(
         'アルバム作成完了',
-        `「${albumName}」を作成しました。`,
-        [
-          {
-            text: 'アルバムを開く',
-            onPress: () => {
-              navigation.navigate('HomeWeb', {
-                albumMediaKey: null,
-                albumTitle: albumName,
-                authKey: null,
-                apiAlbumId: album.id,
-                isFromAutoLoad: true, // 自動読み込みフラグで無限ループ防止
-              });
-            },
-          },
-        ]
+        `「${albumName}」を作成しました。`
       );
+      
+      // アルバム一覧をリロードして新しいアルバムを表示
+      loadAlbums();
     } catch (error) {
       addDebugLog('ALBUM', `Create album error: ${error.message}`);
       Alert.alert('エラー', `アルバム作成に失敗しました\n\n${error.message}`);
