@@ -46,7 +46,7 @@ const STORAGE_KEYS = {
   APP_CREATED_ALBUMS: '@photov_app_created_albums', // PhotoVで作成したアルバムのリスト
 };
 
-const BUILD_VERSION = 'v0.3.48';
+const BUILD_VERSION = 'v0.3.49';
 // Force rebuild
 
 /**
@@ -275,11 +275,17 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
     } catch (err) {
       console.error('アルバム取得エラー:', err);
 
-      // タイムアウトエラーはサイレント（表示しない）
+      // エラーメッセージ
       const errorMsg = err.message || '';
+      
+      // タイムアウトエラー
       if (errorMsg.toLowerCase().includes('timeout') ||
           errorMsg.includes('タイムアウト')) {
-        console.log('タイムアウトエラー（サイレント）:', errorMsg);
+        console.log('タイムアウトエラー:', errorMsg);
+        // アルバムがある場合はサイレント、ない場合はエラー表示
+        if (albums.length === 0) {
+          setError('読み込みがタイムアウトしました。再度お試しください。');
+        }
         return;
       }
 
@@ -307,11 +313,14 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
   const onRefresh = useCallback(() => {
     console.log('🔄 onRefresh called:', { isWebViewReady, hasSessionData: !!sessionData });
     setIsRefreshing(true);
-    // リフレッシュ時はアルバムを一旦クリアして強制再取得
-    setAlbums([]);
     if (isWebViewReady && sessionData) {
       loadAlbums();
     } else {
+      // WebView未準備の場合は再初期化を試行
+      console.log('🔄 WebView not ready, attempting reload');
+      if (webViewRef.current) {
+        webViewRef.current.reload();
+      }
       setIsRefreshing(false);
     }
   }, [loadAlbums, isWebViewReady, sessionData]);
