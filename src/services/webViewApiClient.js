@@ -27,6 +27,7 @@ export function generateApiRequestScript(requestId, rpcid, requestData, sessionD
     bl: bl,
     pageId: 'none',
     rt: 'c',
+    _cb: Date.now(), // キャッシュバスター
   });
   
   const url = `https://photos.google.com/_/PhotosUi/data/batchexecute?${params.toString()}`;
