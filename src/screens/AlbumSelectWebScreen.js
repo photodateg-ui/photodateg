@@ -8,13 +8,13 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
-  SafeAreaView,
   RefreshControl,
   ScrollView,
   Modal,
   TextInput,
   Share,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { WebView } from 'react-native-webview';
@@ -46,7 +46,7 @@ const STORAGE_KEYS = {
   APP_CREATED_ALBUMS: '@photov_app_created_albums', // PhotoVで作成したアルバムのリスト
 };
 
-const BUILD_VERSION = 'v0.3.1 (2026-03-20 OTA fix)';
+const BUILD_VERSION = 'v0.3.6';
 // Force rebuild
 
 /**
@@ -56,6 +56,9 @@ const BUILD_VERSION = 'v0.3.1 (2026-03-20 OTA fix)';
  * リフレッシュ時は内蔵WebViewで再取得。
  */
 export default function AlbumSelectWebScreen({ navigation, route }) {
+  // Safe Area insets
+  const insets = useSafeAreaInsets();
+  
   // WebAuthScreenから渡されたデータ
   const initialAlbums = route?.params?.albums || [];
   const initialSessionData = route?.params?.sessionData || null;
@@ -318,7 +321,7 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
       titleTapCount.current = 0;
     }, 3000);
 
-    if (titleTapCount.current >= 10) {
+    if (titleTapCount.current >= 3) {
       titleTapCount.current = 0;
       openDebugMenu();
     }
@@ -876,7 +879,7 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
   // ローディング状態
   if (isLoading && albums.length === 0) {
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
         {/* 非表示のWebView（API呼び出し用） */}
         {sessionData && (
           <WebView
@@ -898,7 +901,7 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
           <ActivityIndicator size="large" color="#4285F4" />
           <Text style={styles.loadingText}>アルバムを読み込んでいます...</Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
@@ -906,7 +909,7 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
   if (error && albums.length === 0) {
     const isNetworkError = error.includes('ネットワーク') || error.includes('タイムアウト');
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
         {sessionData && (
           <WebView
             ref={webViewRef}
@@ -936,30 +939,12 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
             <Text style={styles.resetButtonText}>最初からやり直す</Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* 非表示のWebView（リフレッシュ時のAPI呼び出し用） */}
-      {sessionData && (
-        <WebView
-          ref={webViewRef}
-          source={{ uri: 'https://photos.google.com/' }}
-          style={styles.hiddenWebView}
-          onLoadEnd={handleWebViewLoadEnd}
-          onMessage={handleWebViewMessage}
-          javaScriptEnabled={true}
-          domStorageEnabled={true}
-          sharedCookiesEnabled={true}
-          thirdPartyCookiesEnabled={true}
-          incognito={false}
-          cacheEnabled={true}
-          userAgent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        />
-      )}
-      
+    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       {/* デバッグメニュー */}
       {showDebugMenu && (
         <TouchableOpacity
@@ -1038,98 +1023,11 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
         </TouchableOpacity>
       )}
 
-      {/* アルバム作成モーダル */}
-      <Modal
-        visible={showCreateAlbum}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowCreateAlbum(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>新しいアルバムを作成</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="アルバム名を入力"
-              value={newAlbumName}
-              onChangeText={setNewAlbumName}
-              autoFocus={true}
-            />
-            <Text style={styles.modalHint}>
-              ※ 作成後、共有アルバムとして設定されます
-            </Text>
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalCancelButton]}
-                onPress={() => {
-                  setShowCreateAlbum(false);
-                  setNewAlbumName('');
-                }}
-              >
-                <Text style={styles.modalCancelText}>キャンセル</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalCreateButton]}
-                onPress={handleCreateAlbum}
-                disabled={isCreatingAlbum}
-              >
-                {isCreatingAlbum ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={styles.modalCreateText}>作成</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* アルバムリネームモーダル */}
-      <Modal
-        visible={showRenameDialog}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowRenameDialog(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>アルバム名を変更</Text>
-            <Text style={styles.modalSubtitle}>
-              {renameAlbum?.title}
-            </Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="新しいアルバム名を入力"
-              value={newTitle}
-              onChangeText={setNewTitle}
-              autoFocus={true}
-            />
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalCancelButton]}
-                onPress={() => {
-                  setShowRenameDialog(false);
-                  setRenameAlbum(null);
-                  setNewTitle('');
-                }}
-              >
-                <Text style={styles.modalCancelText}>キャンセル</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalCreateButton]}
-                onPress={performRenameAlbum}
-              >
-                <Text style={styles.modalCreateText}>変更</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
+      {/* ヘッダー */}
       <View style={styles.header}>
         <View style={styles.headerRow}>
           <View>
-            <Text style={styles.headerTitle}>アルバムを選択</Text>
+            <Text style={styles.headerTitle}>アルバムを選択 <Text style={styles.versionText}>{BUILD_VERSION}</Text></Text>
           </View>
           <View style={styles.headerButtons}>
             <TouchableOpacity
@@ -1155,13 +1053,10 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
         </TouchableOpacity>
       </View>
 
-      <FlatList
-        data={albums}
-        renderItem={renderAlbumItem}
-        keyExtractor={(item) => item.mediaKey}
-        numColumns={2}
+      {/* アルバムリスト */}
+      <ScrollView
         style={styles.albumFlatList}
-        contentContainerStyle={styles.albumList}
+        contentContainerStyle={[styles.albumListGrid, { paddingBottom: 80 + insets.bottom }]}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
@@ -1169,7 +1064,8 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
             colors={['#4285F4']}
           />
         }
-        ListEmptyComponent={
+      >
+        {albums.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyIcon}>📷</Text>
             <Text style={styles.emptyText}>アルバムが見つかりません</Text>
@@ -1177,16 +1073,43 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
               Googleフォトでアルバムを作成してください
             </Text>
           </View>
-        }
-      />
+        ) : (
+          <View style={styles.albumGrid}>
+            {albums.map((item) => (
+              <View key={item.mediaKey} style={styles.albumGridItem}>
+                {renderAlbumItem({ item })}
+              </View>
+            ))}
+          </View>
+        )}
+      </ScrollView>
 
+      {/* フッター */}
       <TouchableOpacity
-        style={styles.manageButton}
+        style={[styles.footerButton, { bottom: insets.bottom }]}
         onPress={() => navigation.navigate('WebManage')}
       >
         <Text style={styles.manageButtonText}>📋 Googleフォトで管理</Text>
       </TouchableOpacity>
-    </SafeAreaView>
+
+      {/* 非表示のWebView（リフレッシュ用） */}
+      {sessionData && (
+        <WebView
+          ref={webViewRef}
+          source={{ uri: 'https://photos.google.com/' }}
+          style={styles.hiddenWebView}
+          onLoadEnd={handleWebViewLoadEnd}
+          onMessage={handleWebViewMessage}
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+          sharedCookiesEnabled={true}
+          thirdPartyCookiesEnabled={true}
+          incognito={false}
+          cacheEnabled={true}
+          userAgent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        />
+      )}
+    </View>
   );
 }
 
@@ -1200,7 +1123,6 @@ const styles = StyleSheet.create({
     width: 1,
     height: 1,
     opacity: 0,
-    overflow: 'hidden',
   },
   loadingContainer: {
     flex: 1,
@@ -1260,6 +1182,7 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
+    backgroundColor: '#f8f8f8',
   },
   headerRow: {
     flexDirection: 'row',
@@ -1272,10 +1195,15 @@ const styles = StyleSheet.create({
     color: '#333',
     marginBottom: 5,
   },
+  versionText: {
+    fontSize: 12,
+    fontWeight: 'normal',
+    color: '#999',
+  },
   manageButton: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: '#fff',
     borderRadius: 8,
   },
   manageButtonText: {
@@ -1289,9 +1217,23 @@ const styles = StyleSheet.create({
   },
   albumFlatList: {
     flex: 1,
+    backgroundColor: '#f8f8f8',
   },
   albumList: {
     padding: 10,
+    flexGrow: 1,
+    justifyContent: 'flex-start',
+  },
+  albumListGrid: {
+    padding: 10,
+  },
+  albumGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  albumGridItem: {
+    width: '50%',
+    padding: 5,
   },
   albumItem: {
     flex: 1,
@@ -1363,7 +1305,18 @@ const styles = StyleSheet.create({
     color: '#999',
   },
   manageButton: {
-    margin: 15,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+  },
+  footerButton: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    marginHorizontal: 15,
+    marginBottom: 15,
     padding: 15,
     backgroundColor: '#f0f0f0',
     borderRadius: 10,
