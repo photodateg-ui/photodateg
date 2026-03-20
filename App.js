@@ -47,8 +47,23 @@ export default function App() {
   const [initialRoute, setInitialRoute] = useState('Startup');
 
   useEffect(() => {
+    checkForOTAUpdate();
     checkSavedSession();
   }, []);
+
+  const checkForOTAUpdate = async () => {
+    if (__DEV__) return; // 開発中はスキップ
+    
+    try {
+      const update = await Updates.checkForUpdateAsync();
+      if (update.isAvailable) {
+        await Updates.fetchUpdateAsync();
+        await Updates.reloadAsync(); // 即座に適用して再起動
+      }
+    } catch (e) {
+      console.log('OTA update check failed:', e);
+    }
+  };
 
   const checkSavedSession = async () => {
     try {
