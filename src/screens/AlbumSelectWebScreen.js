@@ -46,7 +46,7 @@ const STORAGE_KEYS = {
   APP_CREATED_ALBUMS: '@photov_app_created_albums', // PhotoVで作成したアルバムのリスト
 };
 
-const BUILD_VERSION = 'v0.3.61';
+const BUILD_VERSION = 'v0.3.62';
 // Force rebuild
 
 /**
@@ -598,15 +598,13 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
       }));
       addDebugLog('ALBUM', `Album deleted: ${album.title}`);
       
-      // 削除完了後にリフレッシュ（WebViewキャッシュを更新）
-      Alert.alert('削除完了', `「${album.title}」を削除しました`, [
-        { text: 'OK', onPress: () => onRefresh() }
-      ]);
+      // 削除完了（リロードしない：WebViewキャッシュが古いデータを返すとアルバムが復活するため）
+      Alert.alert('削除完了', `「${album.title}」を削除しました`);
     } catch (error) {
       addDebugLog('ALBUM', `Delete album error: ${error.message}`);
       Alert.alert('エラー', `アルバムの削除に失敗しました\n\n${error.message}`);
     }
-  }, [onRefresh]);
+  }, []);
 
   // アルバムリネームボタン押下
   const handleAlbumLongPress = useCallback((album) => {
