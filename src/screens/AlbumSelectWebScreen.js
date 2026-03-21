@@ -46,7 +46,7 @@ const STORAGE_KEYS = {
   APP_CREATED_ALBUMS: '@photov_app_created_albums', // PhotoVで作成したアルバムのリスト
 };
 
-const BUILD_VERSION = 'v0.3.62';
+const BUILD_VERSION = 'v0.3.63';
 // Force rebuild
 
 /**
@@ -73,6 +73,7 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
   const [error, setError] = useState(null);
   const [sessionData, setSessionData] = useState(initialSessionData);
   const [isWebViewReady, setIsWebViewReady] = useState(false);
+  const [webViewKey, setWebViewKey] = useState(0);
   const [showDebugMenu, setShowDebugMenu] = useState(false);
   const [debugLogs, setDebugLogs] = useState([]);
   const [showCreateAlbum, setShowCreateAlbum] = useState(false);
@@ -316,21 +317,16 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
   }, [sessionData, isWebViewReady]);
 
   const onRefresh = useCallback(async () => {
-    console.log('🔄 onRefresh called - reloading WebView');
+    console.log('🔄 onRefresh called - recreating WebView');
     setIsRefreshing(true);
+    setIsWebViewReady(false);
     
-    // WebViewをリロードしてキャッシュをクリア
-    if (webViewRef.current) {
-      webViewRef.current.reload();
-    }
+    // WebViewを完全に再作成（キャッシュ問題を回避）
+    setWebViewKey(prev => prev + 1);
     
-    // WebViewリロード完了を待つ
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // データを再取得
-    await loadAlbums(true);
-    setIsRefreshing(false);
-  }, [loadAlbums]);
+    // WebViewの再作成完了を待つ（onLoadで loadAlbums が呼ばれる）
+    // isRefreshingはloadAlbums完了後にクリアされる
+  }, []);
 
   // デバッグメニュー: タイトルを10回タップで表示（リリース向けに隠蔽強化）
   const handleTitleTap = useCallback(() => {
@@ -928,6 +924,7 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
         {/* 非表示のWebView（API呼び出し用） */}
         {sessionData && (
           <WebView
+            key={`webview-${webViewKey}`}
             ref={webViewRef}
             source={{ uri: 'https://photos.google.com/' }}
             style={styles.hiddenWebView}
@@ -938,7 +935,7 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
             sharedCookiesEnabled={true}
             thirdPartyCookiesEnabled={true}
             incognito={false}
-            cacheEnabled={true}
+            cacheEnabled={false}
             userAgent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
           />
         )}
@@ -957,6 +954,7 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
       <SafeAreaView style={styles.container} >
         {sessionData && (
           <WebView
+            key={`webview-${webViewKey}`}
             ref={webViewRef}
             source={{ uri: 'https://photos.google.com/' }}
             style={styles.hiddenWebView}
@@ -967,7 +965,7 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
             sharedCookiesEnabled={true}
             thirdPartyCookiesEnabled={true}
             incognito={false}
-            cacheEnabled={true}
+            cacheEnabled={false}
             userAgent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
           />
         )}
@@ -990,6 +988,25 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* 非表示WebView（リフレッシュ用） */}
+      {sessionData && (
+        <WebView
+          key={`webview-${webViewKey}`}
+          ref={webViewRef}
+          source={{ uri: 'https://photos.google.com/' }}
+          style={styles.hiddenWebView}
+          onLoadEnd={handleWebViewLoadEnd}
+          onMessage={handleWebViewMessage}
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+          sharedCookiesEnabled={true}
+          thirdPartyCookiesEnabled={true}
+          incognito={false}
+          cacheEnabled={false}
+          userAgent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        />
+      )}
+
       {/* デバッグメニュー */}
       {showDebugMenu && (
         <TouchableOpacity
