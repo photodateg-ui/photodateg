@@ -72,6 +72,7 @@ await ImagePicker.launchImageLibraryAsync({
 - **APP_CREATED_ALBUMS**：このアプリで新規作成したアルバムの `apiAlbumId` を端末の AsyncStorage に保存
 - **SELECTED_ALBUM**：現在選択中のアルバム情報を端末に保存
 - **なぜ listAlbums API が使えないか**：Google Photos API のスコープ制限により、アルバム一覧の取得が常に 0件返る
+- **DELETED_ALBUMS**：削除済みアルバムのmediaKeyリスト。`loadAlbums`の結果からフィルタリングして復活を防止。画面遷移でstateがリセットされても、古いデータから削除済みアルバムが復活しない
 - **Fallback 2 の役割**：アルバム選択画面でアルバムを選び直すと、`APP_CREATED_ALBUMS` が空の場合に `apiAlbumId` が null で上書きされるバグがある。これを防ぐため「同じ名前のアルバムを選んだとき、すでに保存済みの apiAlbumId をそのまま引き継ぐ」仕組み
 
 ---
