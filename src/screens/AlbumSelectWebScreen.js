@@ -47,7 +47,7 @@ const STORAGE_KEYS = {
   DELETED_ALBUMS: '@photov_deleted_albums', // 削除済みアルバムのmediaKeyリスト（復活防止）
 };
 
-const BUILD_VERSION = 'v0.3.69';
+const BUILD_VERSION = 'v0.3.70';
 // Force rebuild
 
 /**
@@ -1433,6 +1433,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8f8f8',
     borderRadius: 12,
     overflow: 'hidden',
+    maxWidth: '48%',
   },
   albumThumbContainer: {
     aspectRatio: 1,
