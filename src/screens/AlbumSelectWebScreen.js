@@ -46,7 +46,7 @@ const STORAGE_KEYS = {
   APP_CREATED_ALBUMS: '@photov_app_created_albums', // PhotoVで作成したアルバムのリスト
 };
 
-const BUILD_VERSION = 'v0.3.56';
+const BUILD_VERSION = 'v0.3.57';
 // Force rebuild
 
 /**
@@ -316,9 +316,12 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
   }, [sessionData, isWebViewReady]);
 
   const onRefresh = useCallback(() => {
-    console.log('🔄 onRefresh called - replacing screen');
-    // 画面全体を再読み込みして最新データを取得
-    navigation.replace('AlbumSelectWeb');
+    console.log('🔄 onRefresh called - resetting screen');
+    // 画面全体を再読み込みして最新データを取得（アニメーションなし）
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'AlbumSelectWeb' }],
+    });
   }, [navigation]);
 
   // デバッグメニュー: タイトルを10回タップで表示（リリース向けに隠蔽強化）
@@ -502,8 +505,11 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
           {
             text: 'OK',
             onPress: () => {
-              // 画面を再読み込みして新しいアルバムを表示
-              navigation.replace('AlbumSelectWeb');
+              // 画面を再読み込みして新しいアルバムを表示（アニメーションなし）
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'AlbumSelectWeb' }],
+              });
             }
           }
         ]
