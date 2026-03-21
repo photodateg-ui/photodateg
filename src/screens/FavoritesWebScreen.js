@@ -16,7 +16,7 @@ import { WebView } from 'react-native-webview';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getPhotoUrl } from '../services/googlePhotosWebApi';
 
-const BUILD_VERSION = 'v0.3.71';
+const BUILD_VERSION = 'v0.3.72';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const NUM_COLUMNS = 3;
 const ITEM_SIZE = SCREEN_WIDTH / NUM_COLUMNS;
@@ -402,7 +402,7 @@ export default function FavoritesWebScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: '#fff',
   },
   header: {
     flexDirection: 'row',
@@ -410,9 +410,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#111',
+    backgroundColor: '#f8f8f8',
     borderBottomWidth: 1,
-    borderBottomColor: '#333',
+    borderBottomColor: '#ddd',
   },
   backButton: {
     padding: 8,
@@ -422,7 +422,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   headerTitle: {
-    color: '#fff',
+    color: '#333',
     fontSize: 18,
     fontWeight: 'bold',
   },
