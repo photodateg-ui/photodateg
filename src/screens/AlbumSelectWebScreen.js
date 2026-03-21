@@ -47,7 +47,7 @@ const STORAGE_KEYS = {
   DELETED_ALBUMS: '@photov_deleted_albums', // 削除済みアルバムのmediaKeyリスト（復活防止）
 };
 
-const BUILD_VERSION = 'v0.3.67';
+const BUILD_VERSION = 'v0.3.69';
 // Force rebuild
 
 /**
@@ -304,9 +304,30 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
       if (errorMsg.toLowerCase().includes('timeout') ||
           errorMsg.includes('タイムアウト')) {
         console.log('タイムアウトエラー:', errorMsg);
-        // アルバムがある場合はサイレント、ない場合はエラー表示
+        // アルバムがある場合はサイレント、ない場合はログイン画面へ
         if (albums.length === 0) {
-          setError('読み込みがタイムアウトしました。再度お試しください。');
+          Alert.alert(
+            'セッション切れの可能性',
+            '再度ログインしてください',
+            [{ 
+              text: 'OK', 
+              onPress: async () => {
+                try {
+                  await AsyncStorage.multiRemove([
+                    '@photov_session_data',
+                    '@photov_selected_album',
+                    '@photov_auth_mode',
+                  ]);
+                } catch (e) {
+                  console.error('セッションクリアエラー:', e);
+                }
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'WebAuth' }],
+                });
+              }
+            }]
+          );
         }
         return;
       }
@@ -317,15 +338,30 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
         return;
       }
 
-      setError(err.message);
-
-      if (err.message.includes('セッション')) {
-        Alert.alert(
-          'セッション切れ',
-          '再度ログインが必要です',
-          [{ text: 'OK', onPress: () => navigation.replace('WebAuth') }]
-        );
-      }
+      // セッション切れの可能性が高いので、自動でログイン画面に遷移
+      console.log('アルバム読み込みエラー、ログイン画面に遷移:', err.message);
+      Alert.alert(
+        'セッション切れ',
+        '再度ログインしてください',
+        [{ 
+          text: 'OK', 
+          onPress: async () => {
+            try {
+              await AsyncStorage.multiRemove([
+                '@photov_session_data',
+                '@photov_selected_album',
+                '@photov_auth_mode',
+              ]);
+            } catch (e) {
+              console.error('セッションクリアエラー:', e);
+            }
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'WebAuth' }],
+            });
+          }
+        }]
+      );
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
