@@ -19,7 +19,7 @@ import {
   restoreFromTrash,
 } from '../services/googlePhotosWebApi';
 
-const BUILD_VERSION = 'v0.3.75';
+const BUILD_VERSION = 'v0.3.76';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const NUM_COLUMNS = 3;
 const ITEM_SIZE = SCREEN_WIDTH / NUM_COLUMNS;

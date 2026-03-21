@@ -55,6 +55,7 @@ import {
   moveItemsToTrashBatch,
   getAlbumPage,
   deleteAlbum,
+  sessionManager,
 } from '../services/googlePhotosWebApi';
 
 const { width } = Dimensions.get('window');
@@ -308,6 +309,12 @@ export default function HomeWebScreen({ route, navigation }) {
           };
           console.log('📂 Setting sessionData:', sd.at ? 'has at' : 'no at');
           setSessionData(sd);
+          
+          // sessionManagerも初期化（削除APIで使用）
+          if (!sessionManager.isValid) {
+            sessionManager.setFromWizData(data.wizData);
+            console.log('📂 Initialized sessionManager:', sessionManager.isValid ? 'valid' : 'invalid');
+          }
           return;
         }
       }
@@ -1448,6 +1455,7 @@ export default function HomeWebScreen({ route, navigation }) {
       try {
         // 非公式APIで削除（dedupKeyあり）
         if (dedupKeys.length > 0) {
+          console.log('🗑️ Calling moveItemsToTrash with', dedupKeys.length, 'keys');
           if (dedupKeys.length <= 50) {
             await moveItemsToTrash(dedupKeys);
           } else {
@@ -1456,6 +1464,9 @@ export default function HomeWebScreen({ route, navigation }) {
             });
           }
           addDebugLog('DELETE', 'Photos moved to trash successfully');
+          console.log('🗑️ moveItemsToTrash completed successfully');
+        } else {
+          console.log('⚠️ No dedupKeys to delete!');
         }
 
         // 公式APIでアルバムから除外（楽観的更新写真・dedupKeyなし・apiMediaItemIdあり）
