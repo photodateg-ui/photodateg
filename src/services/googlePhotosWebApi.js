@@ -16,7 +16,6 @@ const RPC_IDS = {
   GET_SHARED_LINKS: 'F2A0H',      // 共有リンク一覧
   TRASH_OPERATIONS: 'XwAOJf',     // 削除・復元操作（Gemini確認済み）
   DELETE_ALBUM: 'nV6Qv',          // アルバム削除（実機Network検証済み 2026-02-25）
-  GET_TRASH: 'eNG3nf',            // ゴミ箱一覧取得（実機Network検証済み 2026-03-22）
 };
 
 /**
@@ -242,51 +241,6 @@ export async function getSharedLinks(pageId = null) {
   return parseLinksPage(response);
 }
 
-/**
- * ゴミ箱の写真一覧を取得
- * 
- * @param {string|null} pageId - ページネーショントークン
- * @returns {Promise<TrashPage>}
- */
-export async function getTrashItems(pageId = null) {
-  // eNG3nfのリクエストデータ形式（実機Network検証済み 2026-03-22）
-  const requestData = [pageId, null, null, null, 1];
-  const response = await makeApiRequest(RPC_IDS.GET_TRASH, requestData);
-  return parseTrashPage(response);
-}
-
-/**
- * ゴミ箱の全写真を取得（自動ページネーション）
- * 
- * @param {function} onProgress - 進捗コールバック (loadedCount) => void
- * @returns {Promise<TrashItem[]>}
- */
-export async function getAllTrashItems(onProgress = null) {
-  const allItems = [];
-  let pageId = null;
-
-  do {
-    const page = await getTrashItems(pageId);
-    
-    if (page.items) {
-      allItems.push(...page.items);
-    }
-    
-    if (onProgress) {
-      onProgress(allItems.length);
-    }
-    
-    pageId = page.nextPageId;
-    
-    // レートリミット対策
-    if (pageId) {
-      await sleep(300);
-    }
-  } while (pageId);
-
-  return allItems;
-}
-
 // ============================================
 // パーサー関数
 // ============================================
@@ -407,51 +361,6 @@ function parseLinksPage(data) {
   return {
     items: data?.[0]?.map(item => parseSharedLink(item)).filter(Boolean) || [],
     nextPageId: data?.[1] || null,
-  };
-}
-
-/**
- * ゴミ箱アイテムをパース
- * 
- * eNG3nfのレスポンス構造（実機検証済み 2026-03-22）:
- * [mediaKey, ownerId, null, null, null, [mediaKey, ownerId], metadata, timestampData, ...]
- */
-function parseTrashItem(itemData) {
-  if (!itemData) return null;
-
-  const mediaKey = itemData?.[0];
-  const ownerId = itemData?.[1];
-  const timestampData = itemData?.[7];
-  
-  // タイムスタンプを抽出（[16040, 16106127360, ...]形式）
-  // timestampData[1]がミリ秒タイムスタンプの可能性が高い
-  const timestamp = timestampData?.[1] || null;
-  
-  // dedupKeyを抽出（削除・復元に必要）
-  // 通常のparseMediaItemと同じ位置にあるか確認が必要
-  const dedupKey = itemData?.[3] || null;
-
-  return {
-    mediaKey,
-    ownerId,
-    timestamp,
-    dedupKey,
-    // サムネイルURLを構築
-    thumb: mediaKey ? `https://lh3.googleusercontent.com/${mediaKey}` : null,
-  };
-}
-
-/**
- * ゴミ箱一覧ページをパース
- */
-function parseTrashPage(data) {
-  // レスポンス構造: [null, [[item1], [item2], ...], nextPageId?]
-  const items = data?.[1]?.map(item => parseTrashItem(item)).filter(Boolean) || [];
-  const nextPageId = data?.[2] || null;
-  
-  return {
-    items,
-    nextPageId,
   };
 }
 

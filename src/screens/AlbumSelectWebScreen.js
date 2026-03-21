@@ -47,7 +47,7 @@ const STORAGE_KEYS = {
   DELETED_ALBUMS: '@photov_deleted_albums', // 削除済みアルバムのmediaKeyリスト（復活防止）
 };
 
-const BUILD_VERSION = 'v0.3.68';
+const BUILD_VERSION = 'v0.3.67';
 // Force rebuild
 
 /**
@@ -1190,20 +1190,12 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
           <View>
             <Text style={styles.headerTitle}>アルバムを選択 <Text style={styles.versionText}>{BUILD_VERSION}</Text></Text>
           </View>
-          <View style={styles.headerButtons}>
-            <TouchableOpacity
-              style={styles.trashButton}
-              onPress={() => navigation.navigate('TrashWeb', { sessionData })}
-            >
-              <Text style={styles.trashButtonText}>🗑️</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.createAlbumButton}
-              onPress={() => setShowCreateAlbum(true)}
-            >
-              <Text style={styles.createAlbumButtonText}>＋ 新規</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={styles.createAlbumButton}
+            onPress={() => setShowCreateAlbum(true)}
+          >
+            <Text style={styles.createAlbumButtonText}>＋ 新規</Text>
+          </TouchableOpacity>
         </View>
         <TouchableOpacity onPress={handleTitleTap} activeOpacity={1}>
           <Text style={styles.headerSubtitle}>
@@ -1636,13 +1628,6 @@ const styles = StyleSheet.create({
   headerButtons: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  trashButton: {
-    padding: 8,
-    marginRight: 8,
-  },
-  trashButtonText: {
-    fontSize: 20,
   },
   createAlbumButton: {
     backgroundColor: '#4285F4',
