@@ -46,7 +46,7 @@ const STORAGE_KEYS = {
   APP_CREATED_ALBUMS: '@photov_app_created_albums', // PhotoVで作成したアルバムのリスト
 };
 
-const BUILD_VERSION = 'v0.3.59';
+const BUILD_VERSION = 'v0.3.60';
 // Force rebuild
 
 /**
@@ -315,14 +315,22 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
     }
   }, [sessionData, isWebViewReady]);
 
-  const onRefresh = useCallback(() => {
-    console.log('🔄 onRefresh called - resetting screen');
-    // 画面全体を再読み込みして最新データを取得（アニメーションなし）
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'AlbumSelectWeb' }],
-    });
-  }, [navigation]);
+  const onRefresh = useCallback(async () => {
+    console.log('🔄 onRefresh called - reloading WebView');
+    setIsRefreshing(true);
+    
+    // WebViewをリロードしてキャッシュをクリア
+    if (webViewRef.current) {
+      webViewRef.current.reload();
+    }
+    
+    // WebViewリロード完了を待つ
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // データを再取得
+    await loadAlbums(true);
+    setIsRefreshing(false);
+  }, [loadAlbums]);
 
   // デバッグメニュー: タイトルを10回タップで表示（リリース向けに隠蔽強化）
   const handleTitleTap = useCallback(() => {
