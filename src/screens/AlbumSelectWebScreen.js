@@ -44,9 +44,10 @@ const STORAGE_KEYS = {
   SELECTED_ALBUM: '@photov_selected_album',
   SESSION_DATA: '@photov_session_data',
   APP_CREATED_ALBUMS: '@photov_app_created_albums', // PhotoVで作成したアルバムのリスト
+  DELETED_ALBUMS: '@photov_deleted_albums', // 削除済みアルバムのmediaKeyリスト（復活防止）
 };
 
-const BUILD_VERSION = 'v0.3.66';
+const BUILD_VERSION = 'v0.3.67';
 // Force rebuild
 
 /**
@@ -276,8 +277,23 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
       }
 
       // デバッグ用Alertは削除
+
+      // DELETED_ALBUMSに含まれるアルバムを除外（復活防止）
+      let filteredAlbums = sortedAlbums;
+      try {
+        const deletedAlbumsStr = await AsyncStorage.getItem(STORAGE_KEYS.DELETED_ALBUMS);
+        if (deletedAlbumsStr) {
+          const deletedAlbums = JSON.parse(deletedAlbumsStr);
+          if (deletedAlbums.length > 0) {
+            filteredAlbums = sortedAlbums.filter(album => !deletedAlbums.includes(album.mediaKey));
+            addDebugLog('ALBUM', `Filtered ${sortedAlbums.length - filteredAlbums.length} deleted albums`);
+          }
+        }
+      } catch (e) {
+        console.warn('DELETED_ALBUMS読み込みエラー:', e);
+      }
       
-      setAlbums(sortedAlbums);
+      setAlbums(filteredAlbums);
     } catch (err) {
       console.error('アルバム取得エラー:', err);
 
@@ -592,6 +608,21 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
         if (album.title && album.mediaKey && a.title === album.title && a.mediaKey === album.mediaKey) return false;
         return true;
       }));
+      // DELETED_ALBUMSにmediaKeyを追加（復活防止）
+      if (album.mediaKey) {
+        try {
+          const deletedAlbumsStr = await AsyncStorage.getItem(STORAGE_KEYS.DELETED_ALBUMS);
+          const deletedAlbums = deletedAlbumsStr ? JSON.parse(deletedAlbumsStr) : [];
+          if (!deletedAlbums.includes(album.mediaKey)) {
+            deletedAlbums.push(album.mediaKey);
+            await AsyncStorage.setItem(STORAGE_KEYS.DELETED_ALBUMS, JSON.stringify(deletedAlbums));
+          }
+          addDebugLog('ALBUM', `Added to DELETED_ALBUMS: ${album.mediaKey}`);
+        } catch (e) {
+          console.warn('DELETED_ALBUMS保存エラー:', e);
+        }
+      }
+
       addDebugLog('ALBUM', `Album deleted: ${album.title}`);
       
       // 削除完了（リロードしない：WebViewキャッシュが古いデータを返すとアルバムが復活するため）
