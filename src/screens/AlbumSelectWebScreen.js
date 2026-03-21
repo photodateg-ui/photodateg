@@ -46,7 +46,7 @@ const STORAGE_KEYS = {
   APP_CREATED_ALBUMS: '@photov_app_created_albums', // PhotoVで作成したアルバムのリスト
 };
 
-const BUILD_VERSION = 'v0.3.65';
+const BUILD_VERSION = 'v0.3.66';
 // Force rebuild
 
 /**
@@ -1208,23 +1208,25 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
         <Text style={styles.manageButtonText}>📋 Googleフォトで管理</Text>
       </TouchableOpacity>
 
-      {/* 非表示WebView（リフレッシュ用・最後に配置してレイアウトに影響させない） */}
+      {/* 非表示WebView（リフレッシュ用・画面外に配置） */}
       {sessionData && (
-        <WebView
-          key={`webview-${webViewKey}`}
-          ref={webViewRef}
-          source={{ uri: 'https://photos.google.com/' }}
-          style={styles.hiddenWebView}
-          onLoadEnd={handleWebViewLoadEnd}
-          onMessage={handleWebViewMessage}
-          javaScriptEnabled={true}
-          domStorageEnabled={true}
-          sharedCookiesEnabled={true}
-          thirdPartyCookiesEnabled={true}
-          incognito={false}
-          cacheEnabled={false}
-          userAgent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        />
+        <View style={styles.offscreenWebViewContainer}>
+          <WebView
+            key={`webview-${webViewKey}`}
+            ref={webViewRef}
+            source={{ uri: 'https://photos.google.com/' }}
+            style={styles.hiddenWebView}
+            onLoadEnd={handleWebViewLoadEnd}
+            onMessage={handleWebViewMessage}
+            javaScriptEnabled={true}
+            domStorageEnabled={true}
+            sharedCookiesEnabled={true}
+            thirdPartyCookiesEnabled={true}
+            incognito={false}
+            cacheEnabled={false}
+            userAgent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          />
+        </View>
       )}
     </SafeAreaView>
   );
@@ -1243,8 +1245,14 @@ const styles = StyleSheet.create({
     height: 1,
     overflow: 'hidden',
   },
-  hiddenWebView: {
+  offscreenWebViewContainer: {
     position: 'absolute',
+    top: -9999,
+    left: -9999,
+    width: 1,
+    height: 1,
+  },
+  hiddenWebView: {
     width: 1,
     height: 1,
     opacity: 0,
