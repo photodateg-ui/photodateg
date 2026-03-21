@@ -2221,6 +2221,16 @@ export default function HomeWebScreen({ route, navigation }) {
         </ScrollView>
       )}
 
+      {/* ゴミ箱ボタン（フッター） */}
+      {!selectionMode && !isCoverPhotoMode && (
+        <TouchableOpacity
+          style={styles.trashFooterButton}
+          onPress={() => navigation.navigate('TrashWeb', { sessionData })}
+        >
+          <Text style={styles.trashFooterButtonText}>🗑️ ゴミ箱</Text>
+        </TouchableOpacity>
+      )}
+
       {/* アルバムリネームモーダル */}
       <Modal
         visible={showRenameDialog}
@@ -2674,5 +2684,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#fff',
     fontWeight: '600',
+  },
+  trashFooterButton: {
+    position: 'absolute',
+    bottom: 30,
+    alignSelf: 'center',
+    backgroundColor: '#f5f5f5',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  trashFooterButtonText: {
+    fontSize: 15,
+    color: '#333',
+    fontWeight: '500',
   },
 });

@@ -47,7 +47,7 @@ const STORAGE_KEYS = {
   DELETED_ALBUMS: '@photov_deleted_albums', // 削除済みアルバムのmediaKeyリスト（復活防止）
 };
 
-const BUILD_VERSION = 'v0.3.70';
+const BUILD_VERSION = 'v0.3.71';
 // Force rebuild
 
 /**
@@ -1268,6 +1268,22 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
         }
       />
 
+      {/* お気に入り・ゴミ箱ボタン */}
+      <View style={styles.specialFoldersRow}>
+        <TouchableOpacity
+          style={styles.specialFolderButton}
+          onPress={() => navigation.navigate('FavoritesWeb', { sessionData })}
+        >
+          <Text style={styles.specialFolderButtonText}>☆ お気に入り</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.specialFolderButton}
+          onPress={() => navigation.navigate('TrashWeb', { sessionData })}
+        >
+          <Text style={styles.specialFolderButtonText}>🗑️ ゴミ箱</Text>
+        </TouchableOpacity>
+      </View>
+
       <TouchableOpacity
         style={styles.manageButton}
         onPress={() => navigation.navigate('WebManage')}
@@ -1510,6 +1526,24 @@ const styles = StyleSheet.create({
   emptySubtext: {
     fontSize: 13,
     color: '#999',
+  },
+  specialFoldersRow: {
+    flexDirection: 'row',
+    marginHorizontal: 15,
+    marginTop: 10,
+    gap: 10,
+  },
+  specialFolderButton: {
+    flex: 1,
+    padding: 15,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  specialFolderButtonText: {
+    fontSize: 15,
+    color: '#333',
+    fontWeight: '500',
   },
   manageButton: {
     margin: 15,

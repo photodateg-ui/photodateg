@@ -26,6 +26,8 @@ import AlbumSelectWebScreen from './src/screens/AlbumSelectWebScreen';
 import HomeWebScreen from './src/screens/HomeWebScreen';
 import PhotoDetailWebScreen from './src/screens/PhotoDetailWebScreen';
 import WebManageScreen from './src/screens/WebManageScreen';
+import TrashWebScreen from './src/screens/TrashWebScreen';
+import FavoritesWebScreen from './src/screens/FavoritesWebScreen';
 
 const Stack = createStackNavigator();
 
@@ -138,6 +140,8 @@ export default function App() {
           component={WebManageScreen}
           options={{ presentation: 'modal' }}
         />
+        <Stack.Screen name="TrashWeb" component={TrashWebScreen} />
+        <Stack.Screen name="FavoritesWeb" component={FavoritesWebScreen} />
         
         {/* OAuth 方式（公式・旧方式） */}
         <Stack.Screen name="Login" component={LoginScreen} />

@@ -14,26 +14,26 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { WebView } from 'react-native-webview';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {
-  getPhotoUrl,
-  restoreFromTrash,
-} from '../services/googlePhotosWebApi';
+import { getPhotoUrl } from '../services/googlePhotosWebApi';
 
 const BUILD_VERSION = 'v0.3.71';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const NUM_COLUMNS = 3;
 const ITEM_SIZE = SCREEN_WIDTH / NUM_COLUMNS;
 
+// お気に入りページのURL（日本語環境）
+const FAVORITES_URL = 'https://photos.google.com/search/%E3%81%8A%E6%B0%97%E3%81%AB%E5%85%A5%E3%82%8A';
+
 const STORAGE_KEYS = {
   SESSION_DATA: '@photov_session_data',
 };
 
 /**
- * ゴミ箱画面
+ * お気に入り画面
  * 
- * 削除された写真の一覧を表示し、復元機能を提供
+ * お気に入りに追加された写真の一覧を表示
  */
-export default function TrashWebScreen({ navigation, route }) {
+export default function FavoritesWebScreen({ navigation, route }) {
   const initialSessionData = route?.params?.sessionData || null;
 
   const [items, setItems] = useState([]);
@@ -43,9 +43,6 @@ export default function TrashWebScreen({ navigation, route }) {
   const [sessionData, setSessionData] = useState(initialSessionData);
   const [isWebViewReady, setIsWebViewReady] = useState(false);
   const [webViewKey, setWebViewKey] = useState(0);
-  const [selectedItems, setSelectedItems] = useState(new Set());
-  const [isSelectionMode, setIsSelectionMode] = useState(false);
-  const [isRestoring, setIsRestoring] = useState(false);
 
   const webViewRef = useRef(null);
   const pendingRequest = useRef(null);
@@ -74,16 +71,15 @@ export default function TrashWebScreen({ navigation, route }) {
     }
   };
 
-  // ゴミ箱一覧取得用のスクリプト生成
-  const generateGetTrashScript = useCallback(() => {
+  // お気に入り一覧取得用のスクリプト生成
+  const generateGetFavoritesScript = useCallback(() => {
     if (!sessionData) return null;
 
-    const requestId = `trash_${Date.now()}`;
+    const requestId = `favorites_${Date.now()}`;
     pendingRequest.current = requestId;
 
-    // eNG3nf用のリクエスト
-    const rpcId = 'eNG3nf';
-    const requestData = JSON.stringify([null, null, null, null, 1]);
+    // EzkLib（アップロード順取得）を使用
+    const rpcId = 'EzkLib';
 
     return `
       (function() {
@@ -96,14 +92,15 @@ export default function TrashWebScreen({ navigation, route }) {
           
           if (!at || !bl) {
             window.ReactNativeWebView.postMessage(JSON.stringify({
-              type: 'TRASH_ERROR',
+              type: 'FAVORITES_ERROR',
               requestId: requestId,
               error: 'Missing session data'
             }));
             return;
           }
           
-          const requestData = ${requestData};
+          // お気に入りフィルター用のリクエストデータ
+          const requestData = [null, null, null, null, 1, null, null, null, null, null, null, null, null, [2]];
           const reqId = Math.floor(Math.random() * 900000) + 100000;
           
           const formData = new URLSearchParams();
@@ -115,9 +112,11 @@ export default function TrashWebScreen({ navigation, route }) {
           ]]]));
           formData.append('at', at);
           
+          // source-pathにお気に入りのエンコードされたパスを使用
+          const searchPath = encodeURIComponent(window.location.pathname);
           const url = 'https://photos.google.com/_/PhotosUi/data/batchexecute?' +
             'rpcids=${rpcId}&' +
-            'source-path=/trash&' +
+            'source-path=' + searchPath + '&' +
             'f.sid=' + sid + '&' +
             'bl=' + bl + '&' +
             'hl=ja&' +
@@ -135,21 +134,21 @@ export default function TrashWebScreen({ navigation, route }) {
           .then(response => response.text())
           .then(text => {
             window.ReactNativeWebView.postMessage(JSON.stringify({
-              type: 'TRASH_RESPONSE',
+              type: 'FAVORITES_RESPONSE',
               requestId: requestId,
               data: text
             }));
           })
           .catch(error => {
             window.ReactNativeWebView.postMessage(JSON.stringify({
-              type: 'TRASH_ERROR',
+              type: 'FAVORITES_ERROR',
               requestId: requestId,
               error: error.message
             }));
           });
         } catch (e) {
           window.ReactNativeWebView.postMessage(JSON.stringify({
-            type: 'TRASH_ERROR',
+            type: 'FAVORITES_ERROR',
             requestId: requestId,
             error: e.message
           }));
@@ -159,8 +158,8 @@ export default function TrashWebScreen({ navigation, route }) {
     `;
   }, [sessionData]);
 
-  // ゴミ箱レスポンスをパース
-  const parseTrashResponse = useCallback((rawText) => {
+  // お気に入りレスポンスをパース
+  const parseFavoritesResponse = useCallback((rawText) => {
     try {
       // batchexecuteレスポンスをパース
       const lines = rawText.split('\n');
@@ -184,39 +183,42 @@ export default function TrashWebScreen({ navigation, route }) {
       }
 
       if (!jsonData) {
-        console.log('No valid JSON found in trash response');
+        console.log('No valid JSON found in favorites response');
         return [];
       }
 
-      // ゴミ箱アイテムをパース
-      // 構造: [null, [[item1], [item2], ...]]
-      const itemsData = jsonData?.[1] || [];
+      // お気に入りアイテムをパース
+      // 構造: [[[item1], [item2], ...], nextPageToken, ...]
+      const itemsData = jsonData?.[0] || [];
       
       const items = itemsData.map((itemData, index) => {
-        if (!itemData) return null;
+        if (!itemData || !Array.isArray(itemData)) return null;
 
         const mediaKey = itemData?.[0];
-        const ownerId = itemData?.[1];
-        const timestampData = itemData?.[7];
-        const timestamp = timestampData?.[1] || null;
-        const dedupKey = itemData?.[3] || null;
+        const thumbData = itemData?.[1];
+        const thumb = thumbData?.[0];
+        const width = thumbData?.[1];
+        const height = thumbData?.[2];
+        const timestamp = itemData?.[2];
+        const dedupKey = itemData?.[3];
 
         if (!mediaKey) return null;
 
         return {
-          id: `trash_${index}_${mediaKey}`,
+          id: `fav_${index}_${mediaKey}`,
           mediaKey,
-          ownerId,
+          thumb,
+          width,
+          height,
           timestamp,
           dedupKey,
-          thumb: `https://lh3.googleusercontent.com/${mediaKey}`,
         };
       }).filter(Boolean);
 
-      console.log(`📦 Parsed ${items.length} trash items`);
+      console.log(`⭐ Parsed ${items.length} favorite items`);
       return items;
     } catch (error) {
-      console.error('Failed to parse trash response:', error);
+      console.error('Failed to parse favorites response:', error);
       return [];
     }
   }, []);
@@ -227,19 +229,19 @@ export default function TrashWebScreen({ navigation, route }) {
       const message = JSON.parse(event.nativeEvent.data);
       console.log('📨 WebView message:', message.type);
 
-      if (message.type === 'TRASH_RESPONSE') {
+      if (message.type === 'FAVORITES_RESPONSE') {
         if (message.requestId !== pendingRequest.current) {
           console.log('Ignoring stale response');
           return;
         }
 
-        const parsedItems = parseTrashResponse(message.data);
+        const parsedItems = parseFavoritesResponse(message.data);
         setItems(parsedItems);
         setIsLoading(false);
         setIsRefreshing(false);
         setError(null);
-      } else if (message.type === 'TRASH_ERROR') {
-        console.error('Trash error:', message.error);
+      } else if (message.type === 'FAVORITES_ERROR') {
+        console.error('Favorites error:', message.error);
         setError(message.error);
         setIsLoading(false);
         setIsRefreshing(false);
@@ -247,21 +249,21 @@ export default function TrashWebScreen({ navigation, route }) {
     } catch (error) {
       console.error('Failed to handle WebView message:', error);
     }
-  }, [parseTrashResponse]);
+  }, [parseFavoritesResponse]);
 
   // WebView準備完了時
   const handleWebViewLoad = useCallback(() => {
-    console.log('📱 Trash WebView loaded');
+    console.log('⭐ Favorites WebView loaded');
     setIsWebViewReady(true);
     
-    // ゴミ箱一覧を取得
+    // お気に入り一覧を取得
     setTimeout(() => {
-      const script = generateGetTrashScript();
+      const script = generateGetFavoritesScript();
       if (script && webViewRef.current) {
         webViewRef.current.injectJavaScript(script);
       }
     }, 500);
-  }, [generateGetTrashScript]);
+  }, [generateGetFavoritesScript]);
 
   // リフレッシュ
   const onRefresh = useCallback(() => {
@@ -270,86 +272,15 @@ export default function TrashWebScreen({ navigation, route }) {
     setIsWebViewReady(false);
   }, []);
 
-  // 選択モード切り替え
-  const toggleSelectionMode = useCallback(() => {
-    setIsSelectionMode(!isSelectionMode);
-    setSelectedItems(new Set());
-  }, [isSelectionMode]);
-
-  // アイテム選択
-  const toggleItemSelection = useCallback((item) => {
-    if (!item.dedupKey) {
-      Alert.alert('エラー', 'この写真は復元できません（dedupKeyがありません）');
-      return;
-    }
-
-    setSelectedItems(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(item.dedupKey)) {
-        newSet.delete(item.dedupKey);
-      } else {
-        newSet.add(item.dedupKey);
-      }
-      return newSet;
-    });
-  }, []);
-
-  // 選択した写真を復元
-  const restoreSelectedItems = useCallback(async () => {
-    if (selectedItems.size === 0) return;
-
-    Alert.alert(
-      '復元確認',
-      `${selectedItems.size}枚の写真を復元しますか？`,
-      [
-        { text: 'キャンセル', style: 'cancel' },
-        {
-          text: '復元',
-          onPress: async () => {
-            setIsRestoring(true);
-            try {
-              const dedupKeys = Array.from(selectedItems);
-              await restoreFromTrash(dedupKeys);
-              
-              // 復元した写真をリストから削除
-              setItems(prev => prev.filter(item => !selectedItems.has(item.dedupKey)));
-              setSelectedItems(new Set());
-              setIsSelectionMode(false);
-              
-              Alert.alert('完了', '写真を復元しました');
-            } catch (error) {
-              console.error('Restore failed:', error);
-              Alert.alert('エラー', '復元に失敗しました: ' + error.message);
-            } finally {
-              setIsRestoring(false);
-            }
-          },
-        },
-      ]
-    );
-  }, [selectedItems]);
-
   // 写真アイテムのレンダリング
   const renderItem = useCallback(({ item }) => {
-    const isSelected = selectedItems.has(item.dedupKey);
     const thumbUrl = getPhotoUrl(item.thumb, 200, 200, true);
 
     return (
       <TouchableOpacity
-        style={[
-          styles.imageContainer,
-          isSelectionMode && isSelected && styles.imageContainerSelected,
-        ]}
+        style={styles.imageContainer}
         onPress={() => {
-          if (isSelectionMode) {
-            toggleItemSelection(item);
-          }
-        }}
-        onLongPress={() => {
-          if (!isSelectionMode) {
-            setIsSelectionMode(true);
-            toggleItemSelection(item);
-          }
+          // 写真詳細画面に遷移（必要に応じて実装）
         }}
         activeOpacity={0.7}
       >
@@ -359,17 +290,9 @@ export default function TrashWebScreen({ navigation, route }) {
           contentFit="cover"
           cachePolicy="memory-disk"
         />
-        {isSelectionMode && (
-          <View style={[
-            styles.selectionIndicator,
-            isSelected && styles.selectionIndicatorSelected,
-          ]}>
-            {isSelected && <Text style={styles.checkmark}>✓</Text>}
-          </View>
-        )}
       </TouchableOpacity>
     );
-  }, [isSelectionMode, selectedItems, toggleItemSelection]);
+  }, []);
 
   // ヘッダー
   const renderHeader = () => (
@@ -377,18 +300,8 @@ export default function TrashWebScreen({ navigation, route }) {
       <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
         <Text style={styles.backButtonText}>← 戻る</Text>
       </TouchableOpacity>
-      <Text style={styles.headerTitle}>ゴミ箱</Text>
-      <View style={styles.headerRight}>
-        {isSelectionMode ? (
-          <TouchableOpacity onPress={toggleSelectionMode} style={styles.headerButton}>
-            <Text style={styles.headerButtonText}>キャンセル</Text>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity onPress={toggleSelectionMode} style={styles.headerButton}>
-            <Text style={styles.headerButtonText}>選択</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+      <Text style={styles.headerTitle}>⭐ お気に入り</Text>
+      <View style={styles.headerRight} />
     </View>
   );
 
@@ -399,13 +312,13 @@ export default function TrashWebScreen({ navigation, route }) {
         {renderHeader()}
         <View style={styles.centerContent}>
           <ActivityIndicator size="large" color="#4285F4" />
-          <Text style={styles.loadingText}>ゴミ箱を読み込み中...</Text>
+          <Text style={styles.loadingText}>お気に入りを読み込み中...</Text>
         </View>
         {sessionData && (
           <WebView
             key={webViewKey}
             ref={webViewRef}
-            source={{ uri: 'https://photos.google.com/trash' }}
+            source={{ uri: FAVORITES_URL }}
             style={styles.hiddenWebView}
             onLoad={handleWebViewLoad}
             onMessage={handleWebViewMessage}
@@ -441,7 +354,8 @@ export default function TrashWebScreen({ navigation, route }) {
       
       {items.length === 0 ? (
         <View style={styles.centerContent}>
-          <Text style={styles.emptyText}>ゴミ箱は空です</Text>
+          <Text style={styles.emptyText}>お気に入りはありません</Text>
+          <Text style={styles.emptySubtext}>写真を開いて☆マークをタップすると追加できます</Text>
         </View>
       ) : (
         <FlatList
@@ -460,31 +374,13 @@ export default function TrashWebScreen({ navigation, route }) {
         />
       )}
 
-      {/* 選択モード時のフッター */}
-      {isSelectionMode && selectedItems.size > 0 && (
-        <View style={styles.selectionFooter}>
-          <Text style={styles.selectionCount}>{selectedItems.size}枚選択中</Text>
-          <TouchableOpacity
-            onPress={restoreSelectedItems}
-            style={styles.restoreButton}
-            disabled={isRestoring}
-          >
-            {isRestoring ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text style={styles.restoreButtonText}>復元</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      )}
-
       {/* リフレッシュ用WebView */}
       {sessionData && (
         <View style={styles.offscreenWebViewContainer}>
           <WebView
             key={webViewKey}
             ref={webViewRef}
-            source={{ uri: 'https://photos.google.com/trash' }}
+            source={{ uri: FAVORITES_URL }}
             style={styles.hiddenWebView}
             onLoad={handleWebViewLoad}
             onMessage={handleWebViewMessage}
@@ -532,14 +428,6 @@ const styles = StyleSheet.create({
   },
   headerRight: {
     minWidth: 80,
-    alignItems: 'flex-end',
-  },
-  headerButton: {
-    padding: 8,
-  },
-  headerButtonText: {
-    color: '#4285F4',
-    fontSize: 16,
   },
   centerContent: {
     flex: 1,
@@ -570,72 +458,23 @@ const styles = StyleSheet.create({
     color: '#888',
     fontSize: 16,
   },
+  emptySubtext: {
+    color: '#666',
+    fontSize: 14,
+    marginTop: 8,
+  },
   listContent: {
-    paddingBottom: 100,
+    paddingBottom: 50,
   },
   imageContainer: {
     width: ITEM_SIZE,
     height: ITEM_SIZE,
     padding: 1,
   },
-  imageContainerSelected: {
-    backgroundColor: 'rgba(66, 133, 244, 0.3)',
-  },
   thumbnail: {
     width: '100%',
     height: '100%',
     backgroundColor: '#222',
-  },
-  selectionIndicator: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    borderWidth: 2,
-    borderColor: '#fff',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  selectionIndicatorSelected: {
-    backgroundColor: '#4285F4',
-    borderColor: '#4285F4',
-  },
-  checkmark: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  selectionFooter: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: '#222',
-    borderTopWidth: 1,
-    borderTopColor: '#444',
-  },
-  selectionCount: {
-    color: '#fff',
-    fontSize: 16,
-  },
-  restoreButton: {
-    backgroundColor: '#4285F4',
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  restoreButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
   },
   hiddenWebView: {
     width: 1,
