@@ -579,20 +579,32 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
       const savedSelected = await AsyncStorage.getItem(STORAGE_KEYS.SELECTED_ALBUM);
       if (savedSelected) {
         const selected = JSON.parse(savedSelected);
-        if (selected.apiAlbumId === album.apiAlbumId) {
+        if (selected.apiAlbumId === album.apiAlbumId || selected.mediaKey === album.mediaKey || selected.title === album.title) {
           await AsyncStorage.removeItem(STORAGE_KEYS.SELECTED_ALBUM);
         }
       }
 
-      // ローカルstateから削除
-      setAlbums(prev => prev.filter(a => a.apiAlbumId !== album.apiAlbumId));
+      // ローカルstateから削除（apiAlbumId, mediaKey, titleの複合条件で確実に削除）
+      setAlbums(prev => prev.filter(a => {
+        // apiAlbumIdが一致
+        if (album.apiAlbumId && a.apiAlbumId === album.apiAlbumId) return false;
+        // mediaKeyが一致
+        if (album.mediaKey && a.mediaKey === album.mediaKey) return false;
+        // タイトルとmediaKeyの両方が一致（誤削除防止）
+        if (album.title && album.mediaKey && a.title === album.title && a.mediaKey === album.mediaKey) return false;
+        return true;
+      }));
       addDebugLog('ALBUM', `Album deleted: ${album.title}`);
-      Alert.alert('削除完了', `「${album.title}」を削除しました`);
+      
+      // 削除完了後にリフレッシュ（WebViewキャッシュを更新）
+      Alert.alert('削除完了', `「${album.title}」を削除しました`, [
+        { text: 'OK', onPress: () => onRefresh() }
+      ]);
     } catch (error) {
       addDebugLog('ALBUM', `Delete album error: ${error.message}`);
       Alert.alert('エラー', `アルバムの削除に失敗しました\n\n${error.message}`);
     }
-  }, []);
+  }, [onRefresh]);
 
   // アルバムリネームボタン押下
   const handleAlbumLongPress = useCallback((album) => {
