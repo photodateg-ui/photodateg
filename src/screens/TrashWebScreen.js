@@ -19,7 +19,7 @@ import {
   restoreFromTrash,
 } from '../services/googlePhotosWebApi';
 
-const BUILD_VERSION = 'v0.3.72';
+const BUILD_VERSION = 'v0.3.73';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const NUM_COLUMNS = 3;
 const ITEM_SIZE = SCREEN_WIDTH / NUM_COLUMNS;
@@ -74,79 +74,83 @@ export default function TrashWebScreen({ navigation, route }) {
     }
   };
 
-  // ゴミ箱一覧取得用のスクリプト生成
+  // ゴミ箱一覧取得用のスクリプト生成（ページの初期データから取得）
   const generateGetTrashScript = useCallback(() => {
-    if (!sessionData) return null;
-
     const requestId = `trash_${Date.now()}`;
     pendingRequest.current = requestId;
-
-    // eNG3nf用のリクエスト
-    const rpcId = 'eNG3nf';
-    const requestData = JSON.stringify([null, null, null, null, 1]);
 
     return `
       (function() {
         const requestId = '${requestId}';
         
         try {
-          const at = '${sessionData.at || ''}';
-          const bl = '${sessionData.bl || ''}';
-          const sid = '${sessionData.sid || ''}';
+          // ページのHTMLからAF_initDataHashを探す
+          const scripts = document.querySelectorAll('script');
+          let trashData = null;
           
-          if (!at || !bl) {
-            window.ReactNativeWebView.postMessage(JSON.stringify({
-              type: 'TRASH_ERROR',
-              requestId: requestId,
-              error: 'Missing session data'
-            }));
-            return;
+          for (const script of scripts) {
+            const text = script.textContent || '';
+            
+            // AF_initDataHashからデータを探す
+            if (text.includes('AF_initDataHash') || text.includes('key:')) {
+              // メディアキーを含むデータを探す
+              const matches = text.match(/\\["AF1Qip[^"]+"/g);
+              if (matches && matches.length > 0) {
+                trashData = matches.map(m => m.replace(/[\\[\\]"]/g, ''));
+              }
+            }
+            
+            // WIZ_global_dataから抽出
+            if (text.includes('WIZ_global_data')) {
+              const wizMatch = text.match(/WIZ_global_data\\s*=\\s*({[^;]+})/);
+              if (wizMatch) {
+                try {
+                  // セッション情報を更新
+                } catch (e) {}
+              }
+            }
           }
           
-          const requestData = ${requestData};
-          const reqId = Math.floor(Math.random() * 900000) + 100000;
+          // 画像要素から直接取得を試みる
+          const images = document.querySelectorAll('img[src*="googleusercontent.com"]');
+          const imageData = [];
           
-          const formData = new URLSearchParams();
-          formData.append('f.req', JSON.stringify([[[
-            '${rpcId}',
-            JSON.stringify(requestData),
-            null,
-            'generic'
-          ]]]));
-          formData.append('at', at);
-          
-          const url = 'https://photos.google.com/_/PhotosUi/data/batchexecute?' +
-            'rpcids=${rpcId}&' +
-            'source-path=/trash&' +
-            'f.sid=' + sid + '&' +
-            'bl=' + bl + '&' +
-            'hl=ja&' +
-            'soc-app=165&soc-platform=1&soc-device=1&' +
-            '_reqid=' + reqId + '&rt=c';
-          
-          fetch(url, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
-            },
-            body: formData.toString(),
-            credentials: 'include',
-          })
-          .then(response => response.text())
-          .then(text => {
-            window.ReactNativeWebView.postMessage(JSON.stringify({
-              type: 'TRASH_RESPONSE',
-              requestId: requestId,
-              data: text
-            }));
-          })
-          .catch(error => {
-            window.ReactNativeWebView.postMessage(JSON.stringify({
-              type: 'TRASH_ERROR',
-              requestId: requestId,
-              error: error.message
-            }));
+          images.forEach((img, idx) => {
+            const src = img.src;
+            // AF1Qipで始まるメディアキーを抽出
+            const match = src.match(/\\/([A-Za-z0-9_-]{20,})/);
+            if (match) {
+              imageData.push({
+                id: 'trash_' + idx,
+                mediaKey: match[1],
+                thumb: src.split('=')[0],
+              });
+            }
           });
+          
+          // c-wiz要素からデータ属性を取得
+          const cwiz = document.querySelectorAll('[data-media-key]');
+          cwiz.forEach((el, idx) => {
+            const mediaKey = el.getAttribute('data-media-key');
+            if (mediaKey) {
+              imageData.push({
+                id: 'trash_attr_' + idx,
+                mediaKey: mediaKey,
+                thumb: 'https://lh3.googleusercontent.com/' + mediaKey,
+              });
+            }
+          });
+          
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'TRASH_RESPONSE',
+            requestId: requestId,
+            items: imageData,
+            debug: {
+              imageCount: images.length,
+              cwizCount: cwiz.length,
+              url: window.location.href,
+            }
+          }));
         } catch (e) {
           window.ReactNativeWebView.postMessage(JSON.stringify({
             type: 'TRASH_ERROR',
@@ -157,7 +161,7 @@ export default function TrashWebScreen({ navigation, route }) {
       })();
       true;
     `;
-  }, [sessionData]);
+  }, []);
 
   // ゴミ箱レスポンスをパース
   const parseTrashResponse = useCallback((rawText) => {
@@ -225,7 +229,7 @@ export default function TrashWebScreen({ navigation, route }) {
   const handleWebViewMessage = useCallback((event) => {
     try {
       const message = JSON.parse(event.nativeEvent.data);
-      console.log('📨 WebView message:', message.type);
+      console.log('📨 WebView message:', message.type, message.debug);
 
       if (message.type === 'TRASH_RESPONSE') {
         if (message.requestId !== pendingRequest.current) {
@@ -233,11 +237,14 @@ export default function TrashWebScreen({ navigation, route }) {
           return;
         }
 
-        const parsedItems = parseTrashResponse(message.data);
-        setItems(parsedItems);
+        // 新しい形式: message.itemsを直接使用
+        const items = message.items || [];
+        console.log(`🗑️ Got ${items.length} trash items`);
+        
+        setItems(items);
         setIsLoading(false);
         setIsRefreshing(false);
-        setError(null);
+        setError(items.length === 0 ? null : null);
       } else if (message.type === 'TRASH_ERROR') {
         console.error('Trash error:', message.error);
         setError(message.error);
@@ -247,7 +254,7 @@ export default function TrashWebScreen({ navigation, route }) {
     } catch (error) {
       console.error('Failed to handle WebView message:', error);
     }
-  }, [parseTrashResponse]);
+  }, []);
 
   // WebView準備完了時
   const handleWebViewLoad = useCallback(() => {
