@@ -46,7 +46,7 @@ const STORAGE_KEYS = {
   APP_CREATED_ALBUMS: '@photov_app_created_albums', // PhotoVで作成したアルバムのリスト
 };
 
-const BUILD_VERSION = 'v0.3.60';
+const BUILD_VERSION = 'v0.3.61';
 // Force rebuild
 
 /**
@@ -512,13 +512,7 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
         [
           {
             text: 'OK',
-            onPress: () => {
-              // 画面を再読み込みして新しいアルバムを表示（アニメーションなし）
-              navigation.reset({
-                index: 0,
-                routes: [{ name: 'AlbumSelectWeb' }],
-              });
-            }
+            onPress: () => onRefresh()
           }
         ]
       );
