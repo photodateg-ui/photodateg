@@ -19,7 +19,7 @@ import {
   restoreFromTrash,
 } from '../services/googlePhotosWebApi';
 
-const BUILD_VERSION = 'v0.3.74';
+const BUILD_VERSION = 'v0.3.75';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const NUM_COLUMNS = 3;
 const ITEM_SIZE = SCREEN_WIDTH / NUM_COLUMNS;
@@ -84,73 +84,84 @@ export default function TrashWebScreen({ navigation, route }) {
         const requestId = '${requestId}';
         
         try {
-          // ページのHTMLからAF_initDataHashを探す
-          const scripts = document.querySelectorAll('script');
-          let trashData = null;
-          
-          for (const script of scripts) {
-            const text = script.textContent || '';
+          // 少し待ってからデータを取得（遅延読み込み対策）
+          setTimeout(() => {
+            const imageData = [];
             
-            // AF_initDataHashからデータを探す
-            if (text.includes('AF_initDataHash') || text.includes('key:')) {
-              // メディアキーを含むデータを探す
-              const matches = text.match(/\\["AF1Qip[^"]+"/g);
-              if (matches && matches.length > 0) {
-                trashData = matches.map(m => m.replace(/[\\[\\]"]/g, ''));
+            // 方法1: 画像要素から取得
+            const images = document.querySelectorAll('img[src*="googleusercontent.com"]');
+            images.forEach((img, idx) => {
+              const src = img.src;
+              if (src.includes('AF1Qip') || src.includes('lh3.googleusercontent.com')) {
+                const match = src.match(/([A-Za-z0-9_-]{30,})/);
+                if (match) {
+                  imageData.push({
+                    id: 'img_' + idx,
+                    mediaKey: match[1],
+                    thumb: src,
+                  });
+                }
               }
-            }
+            });
             
-            // WIZ_global_dataから抽出
-            if (text.includes('WIZ_global_data')) {
-              const wizMatch = text.match(/WIZ_global_data\\s*=\\s*({[^;]+})/);
-              if (wizMatch) {
-                try {
-                  // セッション情報を更新
-                } catch (e) {}
+            // 方法2: data-* 属性から取得
+            const dataElements = document.querySelectorAll('[data-latest-bg]');
+            dataElements.forEach((el, idx) => {
+              const bg = el.getAttribute('data-latest-bg');
+              if (bg && bg.includes('googleusercontent')) {
+                const match = bg.match(/([A-Za-z0-9_-]{30,})/);
+                if (match) {
+                  imageData.push({
+                    id: 'data_' + idx,
+                    mediaKey: match[1],
+                    thumb: bg,
+                  });
+                }
               }
-            }
-          }
-          
-          // 画像要素から直接取得を試みる
-          const images = document.querySelectorAll('img[src*="googleusercontent.com"]');
-          const imageData = [];
-          
-          images.forEach((img, idx) => {
-            const src = img.src;
-            // AF1Qipで始まるメディアキーを抽出
-            const match = src.match(/\\/([A-Za-z0-9_-]{20,})/);
-            if (match) {
-              imageData.push({
-                id: 'trash_' + idx,
-                mediaKey: match[1],
-                thumb: src.split('=')[0],
-              });
-            }
-          });
-          
-          // c-wiz要素からデータ属性を取得
-          const cwiz = document.querySelectorAll('[data-media-key]');
-          cwiz.forEach((el, idx) => {
-            const mediaKey = el.getAttribute('data-media-key');
-            if (mediaKey) {
-              imageData.push({
-                id: 'trash_attr_' + idx,
-                mediaKey: mediaKey,
-                thumb: 'https://lh3.googleusercontent.com/' + mediaKey,
-              });
-            }
-          });
-          
-          window.ReactNativeWebView.postMessage(JSON.stringify({
-            type: 'TRASH_RESPONSE',
-            requestId: requestId,
-            items: imageData,
-            debug: {
-              imageCount: images.length,
-              cwizCount: cwiz.length,
-              url: window.location.href,
-            }
-          }));
+            });
+            
+            // 方法3: background-image スタイルから取得
+            const allDivs = document.querySelectorAll('div[style*="background-image"]');
+            allDivs.forEach((div, idx) => {
+              const style = div.getAttribute('style');
+              if (style && style.includes('googleusercontent')) {
+                const match = style.match(/url\\(["']?([^"')]+)["']?\\)/);
+                if (match && match[1]) {
+                  const keyMatch = match[1].match(/([A-Za-z0-9_-]{30,})/);
+                  if (keyMatch) {
+                    imageData.push({
+                      id: 'bg_' + idx,
+                      mediaKey: keyMatch[1],
+                      thumb: match[1],
+                    });
+                  }
+                }
+              }
+            });
+            
+            // 重複を除去
+            const uniqueItems = [];
+            const seenKeys = new Set();
+            imageData.forEach(item => {
+              if (!seenKeys.has(item.mediaKey)) {
+                seenKeys.add(item.mediaKey);
+                uniqueItems.push(item);
+              }
+            });
+            
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'TRASH_RESPONSE',
+              requestId: requestId,
+              items: uniqueItems,
+              debug: {
+                imageCount: images.length,
+                dataElementCount: dataElements.length,
+                bgDivCount: allDivs.length,
+                totalFound: uniqueItems.length,
+                url: window.location.href,
+              }
+            }));
+          }, 2000); // 2秒待つ
         } catch (e) {
           window.ReactNativeWebView.postMessage(JSON.stringify({
             type: 'TRASH_ERROR',
@@ -261,13 +272,13 @@ export default function TrashWebScreen({ navigation, route }) {
     console.log('📱 Trash WebView loaded');
     setIsWebViewReady(true);
     
-    // ゴミ箱一覧を取得
+    // ゴミ箱一覧を取得（ページの読み込みを待つ）
     setTimeout(() => {
       const script = generateGetTrashScript();
       if (script && webViewRef.current) {
         webViewRef.current.injectJavaScript(script);
       }
-    }, 500);
+    }, 1500);
   }, [generateGetTrashScript]);
 
   // リフレッシュ
