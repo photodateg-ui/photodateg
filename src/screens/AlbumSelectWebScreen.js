@@ -46,7 +46,7 @@ const STORAGE_KEYS = {
   APP_CREATED_ALBUMS: '@photov_app_created_albums', // PhotoVで作成したアルバムのリスト
 };
 
-const BUILD_VERSION = 'v0.3.55';
+const BUILD_VERSION = 'v0.3.56';
 // Force rebuild
 
 /**
@@ -497,11 +497,17 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
       
       Alert.alert(
         'アルバム作成完了',
-        `「${albumName}」を作成しました。`
+        `「${albumName}」を作成しました。`,
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // 画面を再読み込みして新しいアルバムを表示
+              navigation.replace('AlbumSelectWeb');
+            }
+          }
+        ]
       );
-      
-      // アルバム一覧をリロードして新しいアルバムを表示
-      loadAlbums();
     } catch (error) {
       addDebugLog('ALBUM', `Create album error: ${error.message}`);
       Alert.alert('エラー', `アルバム作成に失敗しました\n\n${error.message}`);
