@@ -46,7 +46,7 @@ const STORAGE_KEYS = {
   APP_CREATED_ALBUMS: '@photov_app_created_albums', // PhotoVで作成したアルバムのリスト
 };
 
-const BUILD_VERSION = 'v0.3.64';
+const BUILD_VERSION = 'v0.3.65';
 // Force rebuild
 
 /**
@@ -988,25 +988,6 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* 非表示WebView（リフレッシュ用） */}
-      {sessionData && (
-        <WebView
-          key={`webview-${webViewKey}`}
-          ref={webViewRef}
-          source={{ uri: 'https://photos.google.com/' }}
-          style={styles.hiddenWebView}
-          onLoadEnd={handleWebViewLoadEnd}
-          onMessage={handleWebViewMessage}
-          javaScriptEnabled={true}
-          domStorageEnabled={true}
-          sharedCookiesEnabled={true}
-          thirdPartyCookiesEnabled={true}
-          incognito={false}
-          cacheEnabled={false}
-          userAgent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        />
-      )}
-
       {/* デバッグメニュー */}
       {showDebugMenu && (
         <TouchableOpacity
@@ -1226,6 +1207,25 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
       >
         <Text style={styles.manageButtonText}>📋 Googleフォトで管理</Text>
       </TouchableOpacity>
+
+      {/* 非表示WebView（リフレッシュ用・最後に配置してレイアウトに影響させない） */}
+      {sessionData && (
+        <WebView
+          key={`webview-${webViewKey}`}
+          ref={webViewRef}
+          source={{ uri: 'https://photos.google.com/' }}
+          style={styles.hiddenWebView}
+          onLoadEnd={handleWebViewLoadEnd}
+          onMessage={handleWebViewMessage}
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+          sharedCookiesEnabled={true}
+          thirdPartyCookiesEnabled={true}
+          incognito={false}
+          cacheEnabled={false}
+          userAgent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        />
+      )}
     </SafeAreaView>
   );
 }
