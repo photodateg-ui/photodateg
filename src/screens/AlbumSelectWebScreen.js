@@ -46,7 +46,7 @@ const STORAGE_KEYS = {
   APP_CREATED_ALBUMS: '@photov_app_created_albums', // PhotoVで作成したアルバムのリスト
 };
 
-const BUILD_VERSION = 'v0.3.63';
+const BUILD_VERSION = 'v0.3.64';
 // Force rebuild
 
 /**
@@ -1244,6 +1244,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   hiddenWebView: {
+    position: 'absolute',
     width: 1,
     height: 1,
     opacity: 0,
