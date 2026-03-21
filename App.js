@@ -120,7 +120,14 @@ export default function App() {
         {/* Web API 方式（非公式・メイン） */}
         <Stack.Screen name="WebAuth" component={WebAuthScreen} />
         <Stack.Screen name="AlbumSelectWeb" component={AlbumSelectWebScreen} />
-        <Stack.Screen name="HomeWeb" component={HomeWebScreen} />
+        <Stack.Screen 
+          name="HomeWeb" 
+          component={HomeWebScreen}
+          options={{
+            animationEnabled: true,
+            animation: 'slide_from_right',
+          }}
+        />
         <Stack.Screen 
           name="PhotoDetailWeb" 
           component={PhotoDetailWebScreen}

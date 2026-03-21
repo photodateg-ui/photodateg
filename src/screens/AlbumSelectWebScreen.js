@@ -46,7 +46,7 @@ const STORAGE_KEYS = {
   APP_CREATED_ALBUMS: '@photov_app_created_albums', // PhotoVで作成したアルバムのリスト
 };
 
-const BUILD_VERSION = 'v0.3.57';
+const BUILD_VERSION = 'v0.3.58';
 // Force rebuild
 
 /**
