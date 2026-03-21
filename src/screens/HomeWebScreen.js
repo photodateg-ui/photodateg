@@ -2225,7 +2225,11 @@ export default function HomeWebScreen({ route, navigation }) {
       {!selectionMode && !isCoverPhotoMode && (
         <TouchableOpacity
           style={styles.trashFooterButton}
-          onPress={() => navigation.navigate('TrashWeb', { sessionData })}
+          onPress={() => {
+            console.log('🗑️ Trash button pressed, sessionData:', !!sessionData);
+            navigation.navigate('TrashWeb', { sessionData });
+          }}
+          activeOpacity={0.7}
         >
           <Text style={styles.trashFooterButtonText}>🗑️ ゴミ箱</Text>
         </TouchableOpacity>
@@ -2698,6 +2702,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 4,
     elevation: 4,
+    zIndex: 999,
   },
   trashFooterButtonText: {
     fontSize: 15,
