@@ -22,7 +22,7 @@ import {
 } from '../services/googlePhotosWebApi';
 import { addDebugLog } from '../services/googleAuthService';
 
-const BUILD_VERSION = 'v0.3.98';
+const BUILD_VERSION = 'v0.3.99';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const NUM_COLUMNS = 3;
 const ITEM_SIZE = SCREEN_WIDTH / NUM_COLUMNS;
@@ -195,18 +195,23 @@ export default function TrashWebScreen({ navigation, route }) {
                   sampleData = text.substring(Math.max(0, idx - 20), idx + 500);
                 }
                 
-                // パターン1: ["AF1Qip...",["https://... 形式
-                const pattern1 = /\\["(AF1Qip[A-Za-z0-9_-]+)",\\s*\\["(https:\\/\\/[^"]+)"/g;
+                // パターン1: ["AF1Qip...",["https://...", w, h, ...], timestamp, "dedupKey", ...] 形式
+                // dedupKeyも取得する（4番目の要素）
+                const pattern1 = /\\["(AF1Qip[A-Za-z0-9_-]+)",\\s*\\["(https:\\/\\/[^"]+)"[^\\]]*\\],\\s*(\\d+),\\s*"([A-Za-z0-9_-]+)"/g;
                 let m1;
                 while ((m1 = pattern1.exec(text)) !== null) {
                   const mediaKey = m1[1];
                   const thumbUrl = m1[2];
+                  const timestamp = parseInt(m1[3]);
+                  const dedupKey = m1[4];
                   if (!trashItems.find(item => item.mediaKey === mediaKey)) {
                     debugInfo.initDataItems++;
                     trashItems.push({
                       id: 'p1_' + trashItems.length,
                       mediaKey: mediaKey,
                       thumb: thumbUrl.includes('=') ? thumbUrl : thumbUrl + '=w256-h256-c',
+                      timestamp: timestamp,
+                      dedupKey: dedupKey,
                     });
                   }
                 }
