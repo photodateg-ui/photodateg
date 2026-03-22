@@ -1311,11 +1311,14 @@ export default function HomeWebScreen({ route, navigation }) {
       // Gemini推奨：アップロード成功した写真を即座に表示（API ID付き）
       if (uploadedPhotos.length > 0) {
         hasOptimisticUpdate.current = true; // 楽観的更新フラグをセット（0件での上書き防止）
-        const updatedPhotos = [...uploadedPhotos, ...photos];
-        setPhotos(updatedPhotos);
-        const newSections = groupPhotosByDate(updatedPhotos);
-        setPhotoSections(newSections);
-        addDebugLog('UPLOAD', `Added ${uploadedPhotos.length} photos with API ID to view immediately`);
+        // 関数形式で最新のphotos状態を参照（クロージャの古い値を使わない）
+        setPhotos(prevPhotos => {
+          const updatedPhotos = [...uploadedPhotos, ...prevPhotos];
+          const newSections = groupPhotosByDate(updatedPhotos);
+          setPhotoSections(newSections);
+          addDebugLog('UPLOAD', `Added ${uploadedPhotos.length} photos with API ID to view immediately (prev had ${prevPhotos.length} photos)`);
+          return updatedPhotos;
+        });
 
         // Gemini推奨：AsyncStorageにAPI IDマッピングを保存（dedupKeyで紐付け）
         try {
@@ -1356,7 +1359,7 @@ export default function HomeWebScreen({ route, navigation }) {
     } finally {
       setIsUploading(false);
     }
-  }, [albumTitle, apiAlbumId, photos]);
+  }, [albumTitle, apiAlbumId]); // photosは関数形式で参照するため依存不要
 
   // 写真をダウンロード（カメラロールに保存）
   const downloadPhoto = useCallback(async (photo) => {

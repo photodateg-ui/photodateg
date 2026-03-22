@@ -17,9 +17,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   getPhotoUrl,
   restoreFromTrash,
+  getTrashItems,
+  sessionManager,
 } from '../services/googlePhotosWebApi';
+import { addDebugLog } from '../services/googleAuthService';
 
-const BUILD_VERSION = 'v0.3.76';
+const BUILD_VERSION = 'v0.3.81';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const NUM_COLUMNS = 3;
 const ITEM_SIZE = SCREEN_WIDTH / NUM_COLUMNS;
@@ -54,14 +57,21 @@ export default function TrashWebScreen({ navigation, route }) {
   useEffect(() => {
     if (!sessionData) {
       loadSessionData();
+    } else {
+      // セッションがあればAPIでゴミ箱取得を試みる
+      loadTrashItemsViaApi();
     }
-  }, []);
+  }, [sessionData]);
 
   const loadSessionData = async () => {
     try {
       const stored = await AsyncStorage.getItem(STORAGE_KEYS.SESSION_DATA);
       if (stored) {
         const parsed = JSON.parse(stored);
+        // sessionManagerを初期化
+        if (parsed.wizData) {
+          sessionManager.setFromWizData(parsed.wizData);
+        }
         setSessionData(parsed);
       } else {
         setError('セッションデータがありません。再ログインしてください。');
@@ -71,6 +81,43 @@ export default function TrashWebScreen({ navigation, route }) {
       console.error('Failed to load session data:', err);
       setError('セッションの読み込みに失敗しました');
       setIsLoading(false);
+    }
+  };
+
+  // APIでゴミ箱アイテムを取得
+  const loadTrashItemsViaApi = async () => {
+    addDebugLog('TRASH', 'Attempting to load trash items via API');
+    addDebugLog('TRASH', `sessionManager.isValid: ${sessionManager.isValid}`);
+    
+    if (!sessionManager.isValid) {
+      addDebugLog('TRASH', 'Session not valid, falling back to WebView');
+      // WebViewでのフォールバックは既存のロジックに任せる
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      addDebugLog('TRASH', 'Calling getTrashItems API...');
+      const result = await getTrashItems(null, 100);
+      addDebugLog('TRASH', `API result: ${result.items?.length || 0} items`);
+      
+      if (result.items && result.items.length > 0) {
+        setItems(result.items);
+        setIsLoading(false);
+        addDebugLog('TRASH', `SUCCESS: Loaded ${result.items.length} trash items via API`);
+      } else {
+        addDebugLog('TRASH', 'No items from API (trash may be empty)');
+        // 0件でも成功とみなす（本当に空の可能性）
+        setItems([]);
+        setIsLoading(false);
+      }
+    } catch (err) {
+      addDebugLog('TRASH', `API error: ${err.message}`);
+      // APIが失敗したらWebViewにフォールバック
+      addDebugLog('TRASH', 'Falling back to WebView...');
+      // isLoadingはtrueのままにして、WebViewに任せる
     }
   };
 
@@ -282,8 +329,28 @@ export default function TrashWebScreen({ navigation, route }) {
   }, [generateGetTrashScript]);
 
   // リフレッシュ
-  const onRefresh = useCallback(() => {
+  const onRefresh = useCallback(async () => {
     setIsRefreshing(true);
+    addDebugLog('TRASH', 'onRefresh called');
+    
+    // まずAPIを試す
+    if (sessionManager.isValid) {
+      try {
+        addDebugLog('TRASH', 'Refreshing via API...');
+        const result = await getTrashItems(null, 100);
+        if (result.items) {
+          setItems(result.items);
+          setIsRefreshing(false);
+          addDebugLog('TRASH', `Refreshed ${result.items.length} trash items via API`);
+          return;
+        }
+      } catch (err) {
+        addDebugLog('TRASH', `Refresh API error: ${err.message}`);
+      }
+    }
+    
+    // APIが失敗したらWebViewをリロード
+    addDebugLog('TRASH', 'Falling back to WebView refresh');
     setWebViewKey(prev => prev + 1);
     setIsWebViewReady(false);
   }, []);

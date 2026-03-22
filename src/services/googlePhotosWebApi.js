@@ -16,6 +16,7 @@ const RPC_IDS = {
   GET_SHARED_LINKS: 'F2A0H',      // 共有リンク一覧
   TRASH_OPERATIONS: 'XwAOJf',     // 削除・復元操作（Gemini確認済み）
   DELETE_ALBUM: 'nV6Qv',          // アルバム削除（実機Network検証済み 2026-02-25）
+  GET_TRASH_ITEMS: 'zy0lHe',      // ゴミ箱一覧取得（PC検証 2026-03-22、空配列でリクエスト）
 };
 
 /**
@@ -81,6 +82,93 @@ export async function makeApiRequest(rpcid, requestData, options = {}) {
     'f.sid': sessionManager.sid,
     bl: sessionManager.bl,
     pageId: 'none',
+    rt: 'c',
+  });
+
+  const url = `https://photos.google.com/_/PhotosUi/data/batchexecute?${params.toString()}`;
+
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const headers = {
+        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+      };
+      
+      // Cookie があれば追加
+      if (sessionManager.cookies) {
+        headers['Cookie'] = sessionManager.cookies;
+      }
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: requestBody,
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status} ${response.statusText}`);
+      }
+
+      const responseBody = await response.text();
+
+      if (!responseBody) {
+        throw new Error('空のレスポンス');
+      }
+
+      // wrb.fr エンベロープを探す
+      const jsonLines = responseBody.split('\n').filter(line => line.includes('wrb.fr'));
+
+      if (jsonLines.length === 0) {
+        throw new Error('wrb.fr エンベロープが見つかりません');
+      }
+
+      const parsedData = JSON.parse(jsonLines[0]);
+
+      if (!parsedData?.[0]?.[2]) {
+        throw new Error('レスポンスにペイロードがありません');
+      }
+
+      return JSON.parse(parsedData[0][2]);
+    } catch (error) {
+      lastError = error;
+      console.error(`[${rpcid}] リクエストエラー (${attempt}/${maxRetries}):`, error.message);
+
+      if (attempt < maxRetries) {
+        await sleep(retryDelay * attempt);
+      }
+    }
+  }
+
+  throw lastError || new Error(`${rpcid} リクエストが ${maxRetries} 回失敗しました`);
+}
+
+/**
+ * ゴミ箱用 batchexecute API にリクエストを送信
+ * source-path を /trash に設定
+ * 
+ * @param {string} rpcid - RPC ID
+ * @param {any} requestData - リクエストデータ
+ * @param {object} options - オプション（retry等）
+ * @returns {Promise<any>} パースされたレスポンス
+ */
+async function makeApiRequestForTrash(rpcid, requestData, options = {}) {
+  const { maxRetries = 3, retryDelay = 2000 } = options;
+
+  if (!sessionManager.isValid) {
+    throw new Error('セッションが無効です。再度ログインしてください。');
+  }
+
+  // PC検証結果: f.req=[[["zy0lHe","[]",null,"1"]]]
+  const wrappedData = [[[rpcid, JSON.stringify(requestData), null, '1']]];
+  const requestBody = `f.req=${encodeURIComponent(JSON.stringify(wrappedData))}&at=${encodeURIComponent(sessionManager.at)}&`;
+
+  const params = new URLSearchParams({
+    rpcids: rpcid,
+    'source-path': '/trash',  // ゴミ箱用に変更
+    'f.sid': sessionManager.sid,
+    bl: sessionManager.bl,
     rt: 'c',
   });
 
@@ -494,6 +582,100 @@ export async function restoreFromTrash(dedupKeys) {
   } catch (error) {
     console.error('[RESTORE] Error in restoreFromTrash:', error);
     throw error;
+  }
+}
+
+/**
+ * ゴミ箱内のアイテム一覧を取得
+ * PC検証 2026-03-22: rpcid=zy0lHe, requestData=[], source-path=/trash
+ *
+ * @param {string|null} pageToken - ページネーショントークン（未使用、将来のページネーション用）
+ * @returns {Promise<Object>} ゴミ箱アイテム一覧
+ */
+export async function getTrashItems(pageToken = null) {
+  // PC検証結果: 空配列でリクエスト
+  const requestData = [];
+
+  try {
+    console.log('[TRASH] Fetching trash items with RPC:', RPC_IDS.GET_TRASH_ITEMS);
+    const response = await makeApiRequestForTrash(RPC_IDS.GET_TRASH_ITEMS, requestData);
+    console.log('[TRASH] Raw response:', JSON.stringify(response).substring(0, 500));
+    
+    // レスポンスをパース
+    const items = parseTrashItems(response);
+    const nextPageToken = response?.[1] || null;
+    
+    return {
+      items,
+      nextPageToken,
+      hasMore: !!nextPageToken,
+    };
+  } catch (error) {
+    console.error('[TRASH] Error in getTrashItems:', error);
+    throw error;
+  }
+}
+
+/**
+ * ゴミ箱アイテムをパース
+ * PC検証 2026-03-22のレスポンス構造:
+ * [[["AF1QipMr-...", ["https://...", 1253, 939, ...], 1743229544191, "dedupKey", 32400000, 1774122175448, ...]]]
+ * [0]: mediaKey, [1]: [thumb, w, h, ...], [2]: timestamp, [3]: dedupKey, [4]: tzOffset, [5]: createdOrDeleted
+ */
+function parseTrashItems(response) {
+  try {
+    // レスポンス構造: [[[item1], [item2], ...]] または [[item1, item2, ...]]
+    let itemsData = response;
+    
+    // ネストされている場合を考慮
+    if (Array.isArray(response) && Array.isArray(response[0])) {
+      // response[0]が配列の配列かチェック
+      if (Array.isArray(response[0][0]) && typeof response[0][0][0] === 'string' && response[0][0][0].startsWith('AF1Qip')) {
+        // 構造: [[[item1], [item2], ...]]
+        itemsData = response[0];
+      } else if (typeof response[0][0] === 'string' && response[0][0].startsWith('AF1Qip')) {
+        // 単一アイテム: [[item]]
+        itemsData = [response[0]];
+      } else {
+        itemsData = response[0];
+      }
+    }
+    
+    if (!Array.isArray(itemsData)) {
+      console.log('[TRASH] itemsData is not an array:', typeof itemsData);
+      return [];
+    }
+
+    const items = itemsData.map((itemData, index) => {
+      if (!itemData) return null;
+      
+      // 配列がネストされている場合
+      const data = Array.isArray(itemData[0]) ? itemData[0] : itemData;
+      
+      // mediaKeyがAF1Qipで始まるかチェック
+      if (typeof data[0] !== 'string' || !data[0].startsWith('AF1Qip')) {
+        console.log(`[TRASH] Item ${index} does not have valid mediaKey:`, data[0]);
+        return null;
+      }
+      
+      return {
+        mediaKey: data[0],
+        thumb: data[1]?.[0],
+        resWidth: data[1]?.[1],
+        resHeight: data[1]?.[2],
+        timestamp: data[2],
+        dedupKey: data[3],
+        timezoneOffset: data[4],
+        // [5]は作成時刻または削除時刻
+        deletedTimestamp: data[5],
+      };
+    }).filter(Boolean);
+
+    console.log(`[TRASH] Parsed ${items.length} trash items`);
+    return items;
+  } catch (error) {
+    console.error('[TRASH] Parse error:', error);
+    return [];
   }
 }
 
