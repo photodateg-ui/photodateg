@@ -1906,7 +1906,7 @@ export default function HomeWebScreen({ route, navigation }) {
   const renderDebugMenu = () => {
     if (!showDebugMenu) return null;
 
-    const BUILD_VERSION = '2026-02-25 (アップロード後リロードで写真消える問題修正)';
+    const BUILD_VERSION = 'v0.3.82';
 
     return (
       <TouchableOpacity

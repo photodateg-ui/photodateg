@@ -22,7 +22,7 @@ import {
 } from '../services/googlePhotosWebApi';
 import { addDebugLog } from '../services/googleAuthService';
 
-const BUILD_VERSION = 'v0.3.81';
+const BUILD_VERSION = 'v0.3.82';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const NUM_COLUMNS = 3;
 const ITEM_SIZE = SCREEN_WIDTH / NUM_COLUMNS;
