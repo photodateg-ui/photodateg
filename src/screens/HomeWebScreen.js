@@ -1927,7 +1927,7 @@ export default function HomeWebScreen({ route, navigation }) {
   const renderDebugMenu = () => {
     if (!showDebugMenu) return null;
 
-    const BUILD_VERSION = 'v0.3.96';
+    const BUILD_VERSION = 'v0.3.97';
 
     return (
       <TouchableOpacity

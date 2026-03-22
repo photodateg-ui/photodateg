@@ -499,6 +499,12 @@ export function getFullSizeUrl(baseThumb, maxWidth = 4096, maxHeight = 4096) {
   }
   
   const baseUrl = baseThumb.split('=')[0];
+  
+  // maxWidth=0, maxHeight=0の場合はオリジナルサイズ（=d）を返す
+  if (maxWidth === 0 && maxHeight === 0) {
+    return `${baseUrl}=d`;
+  }
+  
   return `${baseUrl}=w${maxWidth}-h${maxHeight}`;
 }
 
