@@ -22,7 +22,7 @@ import {
 } from '../services/googlePhotosWebApi';
 import { addDebugLog } from '../services/googleAuthService';
 
-const BUILD_VERSION = 'v0.3.90';
+const BUILD_VERSION = 'v0.3.91';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const NUM_COLUMNS = 3;
 const ITEM_SIZE = SCREEN_WIDTH / NUM_COLUMNS;
@@ -124,7 +124,7 @@ export default function TrashWebScreen({ navigation, route }) {
     }
   };
 
-  // ゴミ箱一覧取得用のスクリプト生成（DOM要素から取得）
+  // ゴミ箱一覧取得用のスクリプト生成
   const generateGetTrashScript = useCallback(() => {
     const requestId = `trash_${Date.now()}`;
     pendingRequest.current = requestId;
@@ -135,17 +135,16 @@ export default function TrashWebScreen({ navigation, route }) {
         
         try {
           let trashItems = [];
+          let debugInfo = { imgCount: 0, bgCount: 0, dataCount: 0, initDataItems: 0 };
           
-          // 方法1: 実際の画像要素から取得（最も信頼性が高い）
-          // Google Photosは画像をdivの背景画像やimgタグで表示する
+          // 方法1: 実際の画像要素から取得
           const allImages = document.querySelectorAll('img[src*="googleusercontent.com"]');
+          debugInfo.imgCount = allImages.length;
           for (const img of allImages) {
             const src = img.src;
-            // AF1Qipで始まるmediaKeyを抽出
             const match = src.match(/\\/([A-Za-z0-9_-]{30,})(?:=|$)/);
             if (match) {
               const mediaKey = match[1];
-              // 重複チェックとAF1Qipプレフィックス確認
               if (mediaKey.startsWith('AF1Qip') && !trashItems.find(item => item.mediaKey === mediaKey)) {
                 trashItems.push({
                   id: 'img_' + trashItems.length,
@@ -156,9 +155,10 @@ export default function TrashWebScreen({ navigation, route }) {
             }
           }
           
-          // 方法2: 背景画像からも取得
+          // 方法2: 背景画像から取得
           if (trashItems.length === 0) {
             const allDivs = document.querySelectorAll('div[style*="background-image"]');
+            debugInfo.bgCount = allDivs.length;
             for (const div of allDivs) {
               const style = div.getAttribute('style') || '';
               const match = style.match(/googleusercontent\\.com\\/([A-Za-z0-9_-]{30,})/);
@@ -175,22 +175,35 @@ export default function TrashWebScreen({ navigation, route }) {
             }
           }
           
-          // 方法3: data-media-keyなどのdata属性から取得
+          // 方法3: AF_initDataCallbackからゴミ箱データを抽出
+          // ゴミ箱アイテムはページ初期データに含まれている（配列の特定構造）
           if (trashItems.length === 0) {
-            const elementsWithData = document.querySelectorAll('[data-media-key], [data-id]');
-            for (const el of elementsWithData) {
-              const mediaKey = el.getAttribute('data-media-key') || el.getAttribute('data-id');
-              if (mediaKey && mediaKey.startsWith('AF1Qip') && !trashItems.find(item => item.mediaKey === mediaKey)) {
-                trashItems.push({
-                  id: 'data_' + trashItems.length,
-                  mediaKey: mediaKey,
-                  thumb: 'https://lh3.googleusercontent.com/' + mediaKey + '=w256-h256-c',
-                });
+            const scripts = document.querySelectorAll('script');
+            for (const script of scripts) {
+              const text = script.textContent || '';
+              // ゴミ箱アイテムの構造: [mediaKey, ownerId, null, dedupKey, ...timestamps...]
+              // AF_initDataCallbackの中でAF1Qipとlh3.googleusercontentが同時に存在するブロックを探す
+              if (text.includes('AF_initDataCallback') && text.includes('AF1Qip')) {
+                // 配列パターンでゴミ箱アイテムを探す
+                // パターン: ["AF1Qip...", "数字(ownerID)", null, "dedupKey文字列", ...]
+                const itemPattern = /\\["(AF1Qip[A-Za-z0-9_-]+)","(\\d+)",null,"([A-Za-z0-9_-]+)"/g;
+                let itemMatch;
+                while ((itemMatch = itemPattern.exec(text)) !== null) {
+                  const mediaKey = itemMatch[1];
+                  const dedupKey = itemMatch[3];
+                  if (!trashItems.find(item => item.mediaKey === mediaKey)) {
+                    debugInfo.initDataItems++;
+                    trashItems.push({
+                      id: 'init_' + trashItems.length,
+                      mediaKey: mediaKey,
+                      dedupKey: dedupKey,
+                      thumb: 'https://lh3.googleusercontent.com/' + mediaKey + '=w256-h256-c',
+                    });
+                  }
+                }
               }
             }
           }
-          
-          // 注意: scriptタグやwizDataからの雑な抽出は行わない（誤検出の原因）
           
           window.ReactNativeWebView.postMessage(JSON.stringify({
             type: 'TRASH_RESPONSE',
@@ -201,6 +214,7 @@ export default function TrashWebScreen({ navigation, route }) {
               totalFound: trashItems.length,
               url: window.location.href,
               hasWizData: !!window.WIZ_global_data,
+              ...debugInfo,
             }
           }));
         } catch (e) {
