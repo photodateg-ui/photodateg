@@ -177,6 +177,100 @@ export function getFullSizeUrl(baseThumb, maxWidth = 4096, maxHeight = 4096) {
 
 ---
 
+## 📅 アップロード時の日時取得（2026-03-23 追加・v0.3.96確定）
+
+### 問題の背景
+
+ImagePickerで取得した写真のEXIFに`DateTimeOriginal`が含まれないことがある。
+- スクリーンショット
+- 加工済み画像
+- 一部のカメラアプリで撮影した写真
+
+この場合、Google Photosにアップロードするとアップロード日時が`creationTime`として設定されてしまう。
+
+### 解決策（v0.3.96）
+
+`DateTimeOriginal`がない場合、`MediaLibrary.getAssetInfoAsync`から`creationTime`を取得してEXIF形式に変換：
+
+```javascript
+if (!dateTimeOriginal && asset.assetId) {
+  const assetInfo = await MediaLibrary.getAssetInfoAsync(asset.assetId);
+  if (assetInfo?.creationTime) {
+    // EXIF形式に変換: "YYYY:MM:DD HH:MM:SS"
+    const date = new Date(assetInfo.creationTime);
+    const pad = (n) => n.toString().padStart(2, '0');
+    dateTimeOriginal = `${date.getFullYear()}:${pad(date.getMonth() + 1)}:${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  }
+}
+```
+
+### 関連ファイル
+
+- `src/screens/HomeWebScreen.js` - アップロード処理（1076行付近）
+
+---
+
+## ⬇️ ダウンロード時のオリジナルサイズ（2026-03-23 追加・v0.3.97確定）
+
+### 問題の背景
+
+`getFullSizeUrl(photo.thumb, 0, 0)`で`maxWidth=0, maxHeight=0`を渡すと、`=w0-h0`という無効なURLが生成されていた。
+
+### 解決策（v0.3.97）
+
+`maxWidth=0, maxHeight=0`の場合は`=d`（オリジナルサイズ・ダウンロード品質）を返すように修正：
+
+```javascript
+if (maxWidth === 0 && maxHeight === 0) {
+  return `${baseUrl}=d`;
+}
+```
+
+### Google Photos URLパラメータ
+
+| パラメータ | 意味 |
+|-----------|------|
+| `=w200-h200-c` | 200×200にクロップ |
+| `=w1920-h1080` | 最大1920×1080 |
+| `=d` | オリジナルサイズ（ダウンロード品質） |
+| `=dv` | 動画ファイル本体 |
+
+---
+
+## 📥 楽観的更新写真のダウンロード（2026-03-23 追加・v0.3.98確定）
+
+### 問題の背景
+
+アップロード直後の楽観的更新で追加された写真は、`thumb`がローカルURI（`file://...`）になっている。この状態でダウンロードしようとすると：
+
+1. `FileSystem.downloadAsync`はHTTP URLを期待しているため失敗
+2. ImagePickerのキャッシュディレクトリは一時的なので、ファイルが既に削除されている可能性
+
+### 解決策（v0.3.98）
+
+ローカルURIの場合は別処理にする：
+
+```javascript
+if (isLocalFile) {
+  const fileInfo = await FileSystem.getInfoAsync(downloadUrl);
+  if (fileInfo.exists) {
+    // ファイルが存在する場合、直接カメラロールに保存
+    await MediaLibrary.createAssetAsync(downloadUrl);
+    return;
+  } else {
+    // ファイルが存在しない場合
+    Alert.alert('エラー', 'この写真はまだ同期中です。\nしばらくしてから再度お試しください。');
+    return;
+  }
+}
+```
+
+### 関連ファイル
+
+- `src/screens/PhotoDetailWebScreen.js` - `downloadCurrentPhoto`関数
+
+---
+
 ## 🗑️ ゴミ箱表示の仕組み（2026-03-23 追加・v0.3.94確定）
 
 ### 概要
@@ -263,3 +357,10 @@ RSさん確認済み：「アルバム一覧とか削除リロード関連は完
 
 **v0.3.94** (2026-03-23 確定)
 RSさん確認済み：ゴミ箱表示機能復活、サムネイル正常表示、誤検出解消
+
+**v0.3.98** (2026-03-23 確定)
+RSさん確認済み：楽観的更新関連の修正完了
+- v0.3.95: アップロード直後の詳細表示（ローカルURI処理）
+- v0.3.96: DateTimeOriginalがない場合のMediaLibraryからの日時取得
+- v0.3.97: ダウンロード時のオリジナルサイズ（=d）
+- v0.3.98: 楽観的更新写真のダウンロード処理
