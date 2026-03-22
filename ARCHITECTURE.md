@@ -141,6 +141,42 @@ await Exify.write(asset.uri, {
 
 ---
 
+## 📷 アップロード直後の詳細表示（2026-03-23 追加・v0.3.95確定）
+
+### 問題の背景
+
+Google Photos APIの`batchCreate`レスポンスには`baseUrl`が含まれないことがある。`baseUrl`がない場合、楽観的更新で追加した写真の`thumb`にはローカルURI（`file://...`）が設定される。
+
+### 以前の問題
+
+詳細画面（`PhotoDetailWebScreen.js`）では、`getFullSizeUrl(photo.thumb)`でURLを生成していた。この関数は`thumb.split('=')[0]`でベースURLを取得していたが、ローカルURIには`=`が含まれないため、無効なURLが生成されて真っ黒になっていた。
+
+### 解決策（v0.3.95）
+
+`getFullSizeUrl`と`getVideoUrl`でローカルURIを検出したら、パラメータを追加せずそのまま返すように修正：
+
+```javascript
+export function getFullSizeUrl(baseThumb, maxWidth = 4096, maxHeight = 4096) {
+  if (!baseThumb) return null;
+  
+  // ローカルURIはそのまま返す
+  if (baseThumb.startsWith('file://') || baseThumb.startsWith('content://') || baseThumb.startsWith('ph://')) {
+    return baseThumb;
+  }
+  
+  const baseUrl = baseThumb.split('=')[0];
+  return `${baseUrl}=w${maxWidth}-h${maxHeight}`;
+}
+```
+
+### 関連ファイル
+
+- `src/services/googlePhotosWebApi.js` - `getFullSizeUrl`、`getVideoUrl`
+- `src/screens/PhotoDetailWebScreen.js` - 詳細画面
+- `src/screens/HomeWebScreen.js` - 楽観的更新でローカルURIを設定（1318行付近）
+
+---
+
 ## 🗑️ ゴミ箱表示の仕組み（2026-03-23 追加・v0.3.94確定）
 
 ### 概要
