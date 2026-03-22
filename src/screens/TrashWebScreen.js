@@ -22,7 +22,7 @@ import {
 } from '../services/googlePhotosWebApi';
 import { addDebugLog } from '../services/googleAuthService';
 
-const BUILD_VERSION = 'v0.3.89';
+const BUILD_VERSION = 'v0.3.90';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const NUM_COLUMNS = 3;
 const ITEM_SIZE = SCREEN_WIDTH / NUM_COLUMNS;
@@ -124,7 +124,7 @@ export default function TrashWebScreen({ navigation, route }) {
     }
   };
 
-  // ゴミ箱一覧取得用のスクリプト生成（ページの初期データから取得）
+  // ゴミ箱一覧取得用のスクリプト生成（DOM要素から取得）
   const generateGetTrashScript = useCallback(() => {
     const requestId = `trash_${Date.now()}`;
     pendingRequest.current = requestId;
@@ -134,23 +134,39 @@ export default function TrashWebScreen({ navigation, route }) {
         const requestId = '${requestId}';
         
         try {
-          // 方法1: ページの初期データ（AF_initDataCallback）から取得
           let trashItems = [];
           
-          // scriptタグからデータを探す
-          const scripts = document.querySelectorAll('script');
-          for (const script of scripts) {
-            const text = script.textContent || '';
-            
-            // AF1Qipで始まるmediaKeyを含むデータを探す
-            if (text.includes('AF1Qip') && text.includes('googleusercontent')) {
-              // JSONっぽい部分を抽出
-              const matches = text.matchAll(/"(AF1Qip[A-Za-z0-9_-]+)"/g);
-              for (const match of matches) {
+          // 方法1: 実際の画像要素から取得（最も信頼性が高い）
+          // Google Photosは画像をdivの背景画像やimgタグで表示する
+          const allImages = document.querySelectorAll('img[src*="googleusercontent.com"]');
+          for (const img of allImages) {
+            const src = img.src;
+            // AF1Qipで始まるmediaKeyを抽出
+            const match = src.match(/\\/([A-Za-z0-9_-]{30,})(?:=|$)/);
+            if (match) {
+              const mediaKey = match[1];
+              // 重複チェックとAF1Qipプレフィックス確認
+              if (mediaKey.startsWith('AF1Qip') && !trashItems.find(item => item.mediaKey === mediaKey)) {
+                trashItems.push({
+                  id: 'img_' + trashItems.length,
+                  mediaKey: mediaKey,
+                  thumb: 'https://lh3.googleusercontent.com/' + mediaKey + '=w256-h256-c',
+                });
+              }
+            }
+          }
+          
+          // 方法2: 背景画像からも取得
+          if (trashItems.length === 0) {
+            const allDivs = document.querySelectorAll('div[style*="background-image"]');
+            for (const div of allDivs) {
+              const style = div.getAttribute('style') || '';
+              const match = style.match(/googleusercontent\\.com\\/([A-Za-z0-9_-]{30,})/);
+              if (match) {
                 const mediaKey = match[1];
-                if (!trashItems.find(item => item.mediaKey === mediaKey)) {
+                if (mediaKey.startsWith('AF1Qip') && !trashItems.find(item => item.mediaKey === mediaKey)) {
                   trashItems.push({
-                    id: 'script_' + trashItems.length,
+                    id: 'bg_' + trashItems.length,
                     mediaKey: mediaKey,
                     thumb: 'https://lh3.googleusercontent.com/' + mediaKey + '=w256-h256-c',
                   });
@@ -159,15 +175,14 @@ export default function TrashWebScreen({ navigation, route }) {
             }
           }
           
-          // 方法2: WIZ_global_dataから取得
-          if (trashItems.length === 0 && window.WIZ_global_data) {
-            const wizStr = JSON.stringify(window.WIZ_global_data);
-            const wizMatches = wizStr.matchAll(/"(AF1Qip[A-Za-z0-9_-]+)"/g);
-            for (const match of wizMatches) {
-              const mediaKey = match[1];
-              if (!trashItems.find(item => item.mediaKey === mediaKey)) {
+          // 方法3: data-media-keyなどのdata属性から取得
+          if (trashItems.length === 0) {
+            const elementsWithData = document.querySelectorAll('[data-media-key], [data-id]');
+            for (const el of elementsWithData) {
+              const mediaKey = el.getAttribute('data-media-key') || el.getAttribute('data-id');
+              if (mediaKey && mediaKey.startsWith('AF1Qip') && !trashItems.find(item => item.mediaKey === mediaKey)) {
                 trashItems.push({
-                  id: 'wiz_' + trashItems.length,
+                  id: 'data_' + trashItems.length,
                   mediaKey: mediaKey,
                   thumb: 'https://lh3.googleusercontent.com/' + mediaKey + '=w256-h256-c',
                 });
@@ -175,21 +190,7 @@ export default function TrashWebScreen({ navigation, route }) {
             }
           }
           
-          // 方法3: document.bodyからAF1Qipを検索
-          if (trashItems.length === 0) {
-            const bodyText = document.body.innerHTML;
-            const bodyMatches = bodyText.matchAll(/AF1Qip[A-Za-z0-9_-]{10,}/g);
-            for (const match of bodyMatches) {
-              const mediaKey = match[0];
-              if (!trashItems.find(item => item.mediaKey === mediaKey)) {
-                trashItems.push({
-                  id: 'body_' + trashItems.length,
-                  mediaKey: mediaKey,
-                  thumb: 'https://lh3.googleusercontent.com/' + mediaKey + '=w256-h256-c',
-                });
-              }
-            }
-          }
+          // 注意: scriptタグやwizDataからの雑な抽出は行わない（誤検出の原因）
           
           window.ReactNativeWebView.postMessage(JSON.stringify({
             type: 'TRASH_RESPONSE',
