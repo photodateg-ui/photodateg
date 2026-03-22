@@ -48,14 +48,23 @@
 
 **回避策（現在の実装）**：
 ```javascript
-await ImagePicker.launchImageLibraryAsync({
-  quality: 1,   // ← 無劣化（再エンコードしない）
-  exif: true,   // ← EXIF情報を保持
+// Step 1: EXIF情報付きで写真を選択
+const result = await ImagePicker.launchImageLibraryAsync({
+  quality: 1,   // ← 無劣化
+  exif: true,   // ← EXIF情報を取得
+});
+
+// Step 2: アップロード前にEXIFを書き戻す（v0.3.77で追加）
+const { Exify } = require('@lodev09/react-native-exify');
+await Exify.write(asset.uri, {
+  DateTimeOriginal: asset.exif.DateTimeOriginal,
+  DateTime: asset.exif.DateTime,
 });
 ```
 
-- `quality: 1` にすることで iOS がファイルを再エンコードせず、元の JPEG バイナリをそのままコピー
-- 元の EXIF データが保持され、Google Photos が正しい撮影日を設定できる
+- `quality: 1` と `exif: true` だけでは不十分（iOSがファイルコピー時にEXIFを消すことがある）
+- **v0.3.77で追加**：ImagePickerが取得したEXIFデータを、`@lodev09/react-native-exify`で明示的にファイルに書き戻す
+- これにより Google Photos が正しい撮影日を設定できる
 
 ---
 
