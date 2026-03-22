@@ -22,7 +22,7 @@ import {
 } from '../services/googlePhotosWebApi';
 import { addDebugLog } from '../services/googleAuthService';
 
-const BUILD_VERSION = 'v0.3.85';
+const BUILD_VERSION = 'v0.3.86';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const NUM_COLUMNS = 3;
 const ITEM_SIZE = SCREEN_WIDTH / NUM_COLUMNS;
@@ -493,35 +493,7 @@ export default function TrashWebScreen({ navigation, route }) {
     </View>
   );
 
-  // ローディング中
-  if (isLoading && !isRefreshing) {
-    return (
-      <SafeAreaView style={styles.container}>
-        {renderHeader()}
-        <View style={styles.centerContent}>
-          <ActivityIndicator size="large" color="#4285F4" />
-          <Text style={styles.loadingText}>ゴミ箱を読み込み中...</Text>
-        </View>
-        {sessionData && (
-          <WebView
-            key={webViewKey}
-            ref={webViewRef}
-            source={{ uri: 'https://photos.google.com/trash' }}
-            style={styles.hiddenWebView}
-            onLoad={handleWebViewLoad}
-            onMessage={handleWebViewMessage}
-            onError={handleWebViewError}
-            onHttpError={(event) => addDebugLog('TRASH', `WebView HTTP error: ${event.nativeEvent.statusCode}`)}
-            javaScriptEnabled={true}
-            domStorageEnabled={true}
-            sharedCookiesEnabled={true}
-            thirdPartyCookiesEnabled={true}
-            cacheEnabled={false}
-          />
-        )}
-      </SafeAreaView>
-    );
-  }
+  // ローディング中のUIは下で条件分岐で表示（WebViewは1つに統一）
 
   // エラー
   if (error) {
@@ -542,7 +514,12 @@ export default function TrashWebScreen({ navigation, route }) {
     <SafeAreaView style={styles.container}>
       {renderHeader()}
       
-      {items.length === 0 ? (
+      {isLoading && !isRefreshing ? (
+        <View style={styles.centerContent}>
+          <ActivityIndicator size="large" color="#4285F4" />
+          <Text style={styles.loadingText}>ゴミ箱を読み込み中...</Text>
+        </View>
+      ) : items.length === 0 ? (
         <View style={styles.centerContent}>
           <Text style={styles.emptyText}>ゴミ箱は空です</Text>
         </View>

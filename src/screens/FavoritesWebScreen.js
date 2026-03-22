@@ -16,7 +16,7 @@ import { WebView } from 'react-native-webview';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getPhotoUrl } from '../services/googlePhotosWebApi';
 
-const BUILD_VERSION = 'v0.3.85';
+const BUILD_VERSION = 'v0.3.86';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const NUM_COLUMNS = 3;
 const ITEM_SIZE = SCREEN_WIDTH / NUM_COLUMNS;
