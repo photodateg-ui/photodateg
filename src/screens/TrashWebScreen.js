@@ -22,7 +22,7 @@ import {
 } from '../services/googlePhotosWebApi';
 import { addDebugLog } from '../services/googleAuthService';
 
-const BUILD_VERSION = 'v0.3.83';
+const BUILD_VERSION = 'v0.3.84';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const NUM_COLUMNS = 3;
 const ITEM_SIZE = SCREEN_WIDTH / NUM_COLUMNS;
@@ -58,8 +58,9 @@ export default function TrashWebScreen({ navigation, route }) {
     if (!sessionData) {
       loadSessionData();
     } else {
-      // セッションがあればAPIでゴミ箱取得を試みる
-      loadTrashItemsViaApi();
+      // API方式は一旦無効化、WebViewで取得
+      // loadTrashItemsViaApi();
+      addDebugLog('TRASH', 'Using WebView only (API disabled)');
     }
   }, [sessionData]);
 
