@@ -22,7 +22,7 @@ import {
 } from '../services/googlePhotosWebApi';
 import { addDebugLog } from '../services/googleAuthService';
 
-const BUILD_VERSION = 'v0.3.93';
+const BUILD_VERSION = 'v0.3.94';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const NUM_COLUMNS = 3;
 const ITEM_SIZE = SCREEN_WIDTH / NUM_COLUMNS;
@@ -175,7 +175,7 @@ export default function TrashWebScreen({ navigation, route }) {
             }
           }
           
-          // 方法3: AF_initDataCallbackからゴミ箱アイテムを正確に抽出
+          // 方法3: ページデータからゴミ箱アイテムを抽出
           if (trashItems.length === 0) {
             const scripts = document.querySelectorAll('script');
             let af1qipCount = 0;
@@ -184,47 +184,69 @@ export default function TrashWebScreen({ navigation, route }) {
             for (const script of scripts) {
               const text = script.textContent || '';
               
-              // AF_initDataCallbackを探す
-              if (text.includes('AF_initDataCallback')) {
-                // データ部分を探す - key:'ds:X', data: の形式
-                const dataMatches = text.matchAll(/key:\\s*'ds:(\\d+)'[^}]*data:\\s*(\\[.*?\\])(?=,\\s*sideChannel|$)/gs);
+              if (text.includes('AF1Qip')) {
+                // AF1Qipの出現回数をカウント
+                const matches = text.match(/AF1Qip/g);
+                if (matches) af1qipCount += matches.length;
                 
-                for (const dm of dataMatches) {
-                  const dataStr = dm[2];
-                  if (dataStr && dataStr.includes('AF1Qip')) {
-                    // ゴミ箱アイテムの構造を探す: ["AF1Qip...", ["https://lh3...", width, height], timestamp, ...]
-                    // パターン: ["AF1Qip...",["https://lh3.googleusercontent.com/...
-                    const itemPattern = /\\["(AF1Qip[A-Za-z0-9_-]+)",\\["(https:\\/\\/lh3\\.googleusercontent\\.com\\/[^"]+)"/g;
-                    let itemMatch;
-                    while ((itemMatch = itemPattern.exec(dataStr)) !== null) {
-                      const mediaKey = itemMatch[1];
-                      const thumbUrl = itemMatch[2];
-                      if (!trashItems.find(item => item.mediaKey === mediaKey)) {
-                        debugInfo.initDataItems++;
-                        trashItems.push({
-                          id: 'init_' + trashItems.length,
-                          mediaKey: mediaKey,
-                          thumb: thumbUrl + '=w256-h256-c',
-                        });
-                      }
-                    }
-                    
-                    // サンプル取得（デバッグ用）
-                    if (!sampleData && dataStr.includes('AF1Qip')) {
-                      const idx = dataStr.indexOf('AF1Qip');
-                      sampleData = dataStr.substring(Math.max(0, idx - 10), idx + 150);
-                    }
+                // サンプル取得（デバッグ用）- 500文字
+                if (!sampleData) {
+                  const idx = text.indexOf('AF1Qip');
+                  sampleData = text.substring(Math.max(0, idx - 20), idx + 500);
+                }
+                
+                // パターン1: ["AF1Qip...",["https://... 形式
+                const pattern1 = /\\["(AF1Qip[A-Za-z0-9_-]+)",\\s*\\["(https:\\/\\/[^"]+)"/g;
+                let m1;
+                while ((m1 = pattern1.exec(text)) !== null) {
+                  const mediaKey = m1[1];
+                  const thumbUrl = m1[2];
+                  if (!trashItems.find(item => item.mediaKey === mediaKey)) {
+                    debugInfo.initDataItems++;
+                    trashItems.push({
+                      id: 'p1_' + trashItems.length,
+                      mediaKey: mediaKey,
+                      thumb: thumbUrl.includes('=') ? thumbUrl : thumbUrl + '=w256-h256-c',
+                    });
+                  }
+                }
+                
+                // パターン2: [["AF1Qip..."],["https://... 形式（配列がネスト）
+                const pattern2 = /\\[\\["(AF1Qip[A-Za-z0-9_-]+)"\\],\\s*\\["(https:\\/\\/[^"]+)"/g;
+                let m2;
+                while ((m2 = pattern2.exec(text)) !== null) {
+                  const mediaKey = m2[1];
+                  const thumbUrl = m2[2];
+                  if (!trashItems.find(item => item.mediaKey === mediaKey)) {
+                    debugInfo.initDataItems++;
+                    trashItems.push({
+                      id: 'p2_' + trashItems.length,
+                      mediaKey: mediaKey,
+                      thumb: thumbUrl.includes('=') ? thumbUrl : thumbUrl + '=w256-h256-c',
+                    });
+                  }
+                }
+                
+                // パターン3: [[["AF1Qip... 形式（3重ネスト）- サムネイルは後続要素
+                const pattern3 = /\\[\\[\\["(AF1Qip[A-Za-z0-9_-]+)"[^\\]]*\\][^\\]]*\\],\\s*\\["(https:\\/\\/[^"]+)"/g;
+                let m3;
+                while ((m3 = pattern3.exec(text)) !== null) {
+                  const mediaKey = m3[1];
+                  const thumbUrl = m3[2];
+                  if (!trashItems.find(item => item.mediaKey === mediaKey)) {
+                    debugInfo.initDataItems++;
+                    trashItems.push({
+                      id: 'p3_' + trashItems.length,
+                      mediaKey: mediaKey,
+                      thumb: thumbUrl.includes('=') ? thumbUrl : thumbUrl + '=w256-h256-c',
+                    });
                   }
                 }
               }
-              
-              // AF1Qipの出現回数をカウント
-              const matches = text.match(/AF1Qip/g);
-              if (matches) af1qipCount += matches.length;
             }
             
             debugInfo.af1qipCount = af1qipCount;
-            debugInfo.af1qipSample = sampleData.substring(0, 150);
+            debugInfo.af1qipSample = sampleData.substring(0, 400);
           }
           
           window.ReactNativeWebView.postMessage(JSON.stringify({
