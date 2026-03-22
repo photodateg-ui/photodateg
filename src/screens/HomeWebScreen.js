@@ -1073,16 +1073,37 @@ export default function HomeWebScreen({ route, navigation }) {
             continue;
           }
 
+          // EXIF日時を取得（DateTimeOriginal > DateTime > MediaLibraryから取得）
+          let dateTimeOriginal = asset.exif?.DateTimeOriginal;
+          let dateTime = asset.exif?.DateTime;
+          
+          // DateTimeOriginalがない場合、MediaLibraryから作成日時を取得
+          if (!dateTimeOriginal && asset.assetId) {
+            try {
+              const assetInfo = await MediaLibrary.getAssetInfoAsync(asset.assetId);
+              if (assetInfo?.creationTime) {
+                // EXIF形式に変換: "YYYY:MM:DD HH:MM:SS"
+                const date = new Date(assetInfo.creationTime);
+                const pad = (n) => n.toString().padStart(2, '0');
+                dateTimeOriginal = `${date.getFullYear()}:${pad(date.getMonth() + 1)}:${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+                dateTime = dateTimeOriginal;
+                addDebugLog('UPLOAD', `Got creationTime from MediaLibrary: ${dateTimeOriginal}`);
+              }
+            } catch (mlError) {
+              addDebugLog('UPLOAD', `MediaLibrary.getAssetInfoAsync failed: ${mlError.message}`);
+            }
+          }
+          
           // EXIF情報があれば書き込み
-          if (asset.exif && (asset.exif.DateTimeOriginal || asset.exif.DateTime)) {
+          if (dateTimeOriginal || dateTime) {
             addDebugLog('UPLOAD', `Writing EXIF to ${asset.uri.substring(0, 50)}...`);
-            addDebugLog('UPLOAD', `EXIF data:`, JSON.stringify(asset.exif).substring(0, 200));
+            addDebugLog('UPLOAD', `EXIF DateTimeOriginal: ${dateTimeOriginal}`);
             
             try {
               const { Exify } = require('@lodev09/react-native-exify');
               await Exify.write(asset.uri, {
-                DateTimeOriginal: asset.exif.DateTimeOriginal,
-                DateTime: asset.exif.DateTime || asset.exif.DateTimeOriginal,
+                DateTimeOriginal: dateTimeOriginal,
+                DateTime: dateTime || dateTimeOriginal,
               });
               addDebugLog('UPLOAD', `EXIF written successfully`);
             } catch (exifyError) {
@@ -1090,7 +1111,7 @@ export default function HomeWebScreen({ route, navigation }) {
               // EXIF書き込み失敗しても続行
             }
           } else {
-            addDebugLog('UPLOAD', `No EXIF data for asset, skipping EXIF write`);
+            addDebugLog('UPLOAD', `No date info available for asset, skipping EXIF write`);
           }
           processedAssets.push(asset);
         } catch (assetError) {
@@ -1906,7 +1927,7 @@ export default function HomeWebScreen({ route, navigation }) {
   const renderDebugMenu = () => {
     if (!showDebugMenu) return null;
 
-    const BUILD_VERSION = 'v0.3.95';
+    const BUILD_VERSION = 'v0.3.96';
 
     return (
       <TouchableOpacity
