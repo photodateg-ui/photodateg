@@ -22,7 +22,7 @@ import {
 } from '../services/googlePhotosWebApi';
 import { addDebugLog } from '../services/googleAuthService';
 
-const BUILD_VERSION = 'v0.3.91';
+const BUILD_VERSION = 'v0.3.92';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const NUM_COLUMNS = 3;
 const ITEM_SIZE = SCREEN_WIDTH / NUM_COLUMNS;
@@ -175,34 +175,41 @@ export default function TrashWebScreen({ navigation, route }) {
             }
           }
           
-          // 方法3: AF_initDataCallbackからゴミ箱データを抽出
-          // ゴミ箱アイテムはページ初期データに含まれている（配列の特定構造）
+          // 方法3: ページ内のAF1Qipを探してデバッグ情報取得
           if (trashItems.length === 0) {
             const scripts = document.querySelectorAll('script');
+            let af1qipSample = '';
+            let af1qipCount = 0;
+            
             for (const script of scripts) {
               const text = script.textContent || '';
-              // ゴミ箱アイテムの構造: [mediaKey, ownerId, null, dedupKey, ...timestamps...]
-              // AF_initDataCallbackの中でAF1Qipとlh3.googleusercontentが同時に存在するブロックを探す
-              if (text.includes('AF_initDataCallback') && text.includes('AF1Qip')) {
-                // 配列パターンでゴミ箱アイテムを探す
-                // パターン: ["AF1Qip...", "数字(ownerID)", null, "dedupKey文字列", ...]
-                const itemPattern = /\\["(AF1Qip[A-Za-z0-9_-]+)","(\\d+)",null,"([A-Za-z0-9_-]+)"/g;
-                let itemMatch;
-                while ((itemMatch = itemPattern.exec(text)) !== null) {
-                  const mediaKey = itemMatch[1];
-                  const dedupKey = itemMatch[3];
+              if (text.includes('AF1Qip')) {
+                // AF1Qipの周囲50文字をサンプルとして取得
+                const idx = text.indexOf('AF1Qip');
+                if (idx !== -1 && !af1qipSample) {
+                  af1qipSample = text.substring(Math.max(0, idx - 20), idx + 80);
+                }
+                // AF1Qipの出現回数をカウント
+                const matches = text.match(/AF1Qip/g);
+                if (matches) af1qipCount += matches.length;
+                
+                // 単純にAF1Qipで始まる文字列を全部抽出
+                const keyMatches = text.matchAll(/(AF1Qip[A-Za-z0-9_-]{10,50})/g);
+                for (const m of keyMatches) {
+                  const mediaKey = m[1];
                   if (!trashItems.find(item => item.mediaKey === mediaKey)) {
                     debugInfo.initDataItems++;
                     trashItems.push({
-                      id: 'init_' + trashItems.length,
+                      id: 'script_' + trashItems.length,
                       mediaKey: mediaKey,
-                      dedupKey: dedupKey,
                       thumb: 'https://lh3.googleusercontent.com/' + mediaKey + '=w256-h256-c',
                     });
                   }
                 }
               }
             }
+            debugInfo.af1qipCount = af1qipCount;
+            debugInfo.af1qipSample = af1qipSample.substring(0, 100);
           }
           
           window.ReactNativeWebView.postMessage(JSON.stringify({
