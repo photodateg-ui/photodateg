@@ -173,6 +173,8 @@ async function makeApiRequestForTrash(rpcid, requestData, options = {}) {
   });
 
   const url = `https://photos.google.com/_/PhotosUi/data/batchexecute?${params.toString()}`;
+  console.log('[TRASH API] Request URL:', url);
+  console.log('[TRASH API] Request body preview:', requestBody.substring(0, 200));
 
   let lastError = null;
 
@@ -187,6 +189,7 @@ async function makeApiRequestForTrash(rpcid, requestData, options = {}) {
         headers['Cookie'] = sessionManager.cookies;
       }
 
+      console.log('[TRASH API] Attempt', attempt, '/', maxRetries);
       const response = await fetch(url, {
         method: 'POST',
         headers,
@@ -194,11 +197,14 @@ async function makeApiRequestForTrash(rpcid, requestData, options = {}) {
         credentials: 'include',
       });
 
+      console.log('[TRASH API] Response status:', response.status);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status} ${response.statusText}`);
       }
 
       const responseBody = await response.text();
+      console.log('[TRASH API] Response length:', responseBody.length);
+      console.log('[TRASH API] Response preview:', responseBody.substring(0, 500));
 
       if (!responseBody) {
         throw new Error('空のレスポンス');
@@ -206,12 +212,14 @@ async function makeApiRequestForTrash(rpcid, requestData, options = {}) {
 
       // wrb.fr エンベロープを探す
       const jsonLines = responseBody.split('\n').filter(line => line.includes('wrb.fr'));
+      console.log('[TRASH API] Found wrb.fr lines:', jsonLines.length);
 
       if (jsonLines.length === 0) {
         throw new Error('wrb.fr エンベロープが見つかりません');
       }
 
       const parsedData = JSON.parse(jsonLines[0]);
+      console.log('[TRASH API] Parsed data[0][2] preview:', parsedData?.[0]?.[2]?.substring?.(0, 300) || 'N/A');
 
       if (!parsedData?.[0]?.[2]) {
         throw new Error('レスポンスにペイロードがありません');

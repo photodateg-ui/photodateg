@@ -22,7 +22,7 @@ import {
 } from '../services/googlePhotosWebApi';
 import { addDebugLog } from '../services/googleAuthService';
 
-const BUILD_VERSION = 'v0.3.82';
+const BUILD_VERSION = 'v0.3.83';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const NUM_COLUMNS = 3;
 const ITEM_SIZE = SCREEN_WIDTH / NUM_COLUMNS;
@@ -88,6 +88,8 @@ export default function TrashWebScreen({ navigation, route }) {
   const loadTrashItemsViaApi = async () => {
     addDebugLog('TRASH', 'Attempting to load trash items via API');
     addDebugLog('TRASH', `sessionManager.isValid: ${sessionManager.isValid}`);
+    addDebugLog('TRASH', `sessionManager.at: ${sessionManager.at ? 'exists' : 'missing'}`);
+    addDebugLog('TRASH', `sessionManager.sid: ${sessionManager.sid ? 'exists' : 'missing'}`);
     
     if (!sessionManager.isValid) {
       addDebugLog('TRASH', 'Session not valid, falling back to WebView');
@@ -101,7 +103,7 @@ export default function TrashWebScreen({ navigation, route }) {
       
       addDebugLog('TRASH', 'Calling getTrashItems API...');
       const result = await getTrashItems(null, 100);
-      addDebugLog('TRASH', `API result: ${result.items?.length || 0} items`);
+      addDebugLog('TRASH', `API result: ${JSON.stringify(result).substring(0, 300)}`);
       
       if (result.items && result.items.length > 0) {
         setItems(result.items);
