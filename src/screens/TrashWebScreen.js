@@ -22,7 +22,7 @@ import {
 } from '../services/googlePhotosWebApi';
 import { addDebugLog } from '../services/googleAuthService';
 
-const BUILD_VERSION = 'v0.3.84';
+const BUILD_VERSION = 'v0.3.85';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const NUM_COLUMNS = 3;
 const ITEM_SIZE = SCREEN_WIDTH / NUM_COLUMNS;
@@ -320,16 +320,29 @@ export default function TrashWebScreen({ navigation, route }) {
   // WebView準備完了時
   const handleWebViewLoad = useCallback(() => {
     console.log('📱 Trash WebView loaded');
+    addDebugLog('TRASH', 'WebView onLoad fired');
     setIsWebViewReady(true);
     
     // ゴミ箱一覧を取得（ページの読み込みを待つ）
     setTimeout(() => {
+      addDebugLog('TRASH', 'Injecting trash script...');
       const script = generateGetTrashScript();
       if (script && webViewRef.current) {
         webViewRef.current.injectJavaScript(script);
+        addDebugLog('TRASH', 'Script injected');
+      } else {
+        addDebugLog('TRASH', `Script injection failed: script=${!!script}, webViewRef=${!!webViewRef.current}`);
       }
     }, 1500);
   }, [generateGetTrashScript]);
+
+  // WebViewエラー時
+  const handleWebViewError = useCallback((event) => {
+    const { nativeEvent } = event;
+    addDebugLog('TRASH', `WebView error: ${nativeEvent.description || JSON.stringify(nativeEvent)}`);
+    setError('ゴミ箱の読み込みに失敗しました');
+    setIsLoading(false);
+  }, []);
 
   // リフレッシュ
   const onRefresh = useCallback(async () => {
@@ -497,6 +510,8 @@ export default function TrashWebScreen({ navigation, route }) {
             style={styles.hiddenWebView}
             onLoad={handleWebViewLoad}
             onMessage={handleWebViewMessage}
+            onError={handleWebViewError}
+            onHttpError={(event) => addDebugLog('TRASH', `WebView HTTP error: ${event.nativeEvent.statusCode}`)}
             javaScriptEnabled={true}
             domStorageEnabled={true}
             sharedCookiesEnabled={true}
