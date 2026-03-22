@@ -1813,7 +1813,7 @@ export default function HomeWebScreen({ route, navigation }) {
     setShowDebugMenu(true);
   }, []);
 
-  // デバッグメニュー: タイトルを10回タップで表示（リリース向けに隠蔽強化）
+  // デバッグメニュー: タイトルを3回タップで表示
   const handleTitleTap = useCallback(async () => {
     titleTapCount.current += 1;
 
@@ -1823,9 +1823,9 @@ export default function HomeWebScreen({ route, navigation }) {
 
     titleTapTimer.current = setTimeout(() => {
       titleTapCount.current = 0;
-    }, 3000);
+    }, 2000);
 
-    if (titleTapCount.current >= 10) {
+    if (titleTapCount.current >= 3) {
       titleTapCount.current = 0;
       await openDebugMenu();
     }
@@ -1927,7 +1927,7 @@ export default function HomeWebScreen({ route, navigation }) {
   const renderDebugMenu = () => {
     if (!showDebugMenu) return null;
 
-    const BUILD_VERSION = 'v0.3.99';
+    const BUILD_VERSION = 'v0.3.115';
 
     return (
       <TouchableOpacity

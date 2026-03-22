@@ -47,7 +47,7 @@ const STORAGE_KEYS = {
   DELETED_ALBUMS: '@photov_deleted_albums', // 削除済みアルバムのmediaKeyリスト（復活防止）
 };
 
-const BUILD_VERSION = 'v0.3.99';
+const BUILD_VERSION = 'v0.3.115';
 // Force rebuild
 
 /**
@@ -390,9 +390,9 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
 
     titleTapTimer.current = setTimeout(() => {
       titleTapCount.current = 0;
-    }, 3000);
+    }, 2000);
 
-    if (titleTapCount.current >= 10) {
+    if (titleTapCount.current >= 3) {
       titleTapCount.current = 0;
       openDebugMenu();
     }

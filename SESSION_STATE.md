@@ -4,7 +4,7 @@
 
 | 項目 | 内容 |
 |------|------|
-| バージョン | v0.3.99 |
+| バージョン | v0.3.115 |
 | ビルドナンバー | GitHub Actions run番号（自動） |
 | TestFlight | ビルド進行中（2026-03-18） |
 
@@ -99,6 +99,12 @@ git push → GitHub Actions自動実行 → TestFlight
 ---
 
 ## ★ 既知の問題・やること
+
+### 🔴 緊急: ゴミ箱復元機能（2026-03-23）
+- **状態**: サムネイル表示OK、復元NG
+- **原因**: dedupKeyが取得できない（データ構造変更？）
+- **詳細**: `/home/riichi/works/photov/HANDOVER.md` 参照
+- **次のステップ**: PCでGoogle Photosのゴミ箱ページをDevToolsで調査
 
 ### 確認待ち
 - [ ] 新ビルドでGoogleログインが動くか確認（新OAuthクライアントID）
