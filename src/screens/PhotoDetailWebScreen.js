@@ -95,13 +95,54 @@ export default function PhotoDetailWebScreen({ route, navigation }) {
 
       // ダウンロードURLを取得
       let downloadUrl;
+      let isLocalFile = false;
+      
       if (isVideo) {
         // 動画：baseUrl + =dv パラメータ
         const baseUrl = currentPhoto.thumb.split('=')[0];
         downloadUrl = `${baseUrl}=dv`;
+        // ローカルURI判定
+        if (downloadUrl.startsWith('file://') || downloadUrl.startsWith('content://') || downloadUrl.startsWith('ph://')) {
+          isLocalFile = true;
+        }
       } else {
         // 写真：表示中の画像URL（オリジナルサイズ）
-        downloadUrl = imageUrls[currentIndex].url;
+        downloadUrl = imageUrls[currentIndex]?.url;
+        // ローカルURI判定
+        if (downloadUrl && (downloadUrl.startsWith('file://') || downloadUrl.startsWith('content://') || downloadUrl.startsWith('ph://'))) {
+          isLocalFile = true;
+        }
+      }
+      
+      // ローカルURIの場合（楽観的更新で追加された写真）
+      if (isLocalFile) {
+        // ローカルファイルが存在するか確認
+        try {
+          const fileInfo = await FileSystem.getInfoAsync(downloadUrl);
+          if (fileInfo.exists) {
+            // ファイルが存在する場合、直接カメラロールに保存
+            await MediaLibrary.createAssetAsync(downloadUrl);
+            Alert.alert('完了', '写真をカメラロールに保存しました');
+            setIsDownloading(false);
+            return;
+          } else {
+            // ファイルが存在しない場合
+            Alert.alert('エラー', 'この写真はまだ同期中です。\nしばらくしてから再度お試しください。');
+            setIsDownloading(false);
+            return;
+          }
+        } catch (localError) {
+          Alert.alert('エラー', 'この写真はまだ同期中です。\nしばらくしてから再度お試しください。');
+          setIsDownloading(false);
+          return;
+        }
+      }
+      
+      // URL未取得の場合
+      if (!downloadUrl) {
+        Alert.alert('エラー', 'ダウンロードURLを取得できませんでした');
+        setIsDownloading(false);
+        return;
       }
 
       // 撮影日時からファイル名を生成
