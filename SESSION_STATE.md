@@ -1,4 +1,4 @@
-# PhotoDateG - セッション状態管理（2026-03-18 更新）
+# PhotoDateG - セッション状態管理（2026-03-23 更新）
 
 ## 現在のバージョン
 
@@ -72,6 +72,12 @@
 ### TestFlight設定
 - [x] 内部テスター登録済み（r.sato.jp@gmail.com 他2名）
 
+### ゴミ箱機能修正（v0.3.94 確定）
+- [x] 黒い画像の誤検出問題解消（AF1Qip雑抽出→正確なパターンマッチに変更）
+- [x] ゴミ箱アイテム取得改善（WebViewページデータからパターン1で抽出）
+- [x] サムネイルURL正常取得（レスポンスから直接URLを使用）
+- [x] バージョン一括更新スクリプト作成（`./scripts/bump-version.sh`）
+
 ---
 
 ## ★ OTAビルドの使い方（重要）
@@ -113,7 +119,9 @@ git push → GitHub Actions自動実行 → TestFlight
 | `src/services/googlePhotosWebApi.js` | `moveItemsToTrash` 449行、`deleteAlbum` 508行 |
 | `src/screens/AlbumSelectWebScreen.js` | `selectAlbum` 721行、SafeAreaView修正済み |
 | `src/screens/HomeWebScreen.js` | `performUpload` 1239行、`performDelete` 1411行 |
+| `src/screens/TrashWebScreen.js` | `generateGetTrashScript` 127行、ゴミ箱アイテム抽出 |
 | `src/config/googleAuth.js` | OAuthクライアントID設定 |
+| `scripts/bump-version.sh` | 全画面のBUILD_VERSION一括更新スクリプト |
 
 ---
 
@@ -126,6 +134,12 @@ git push → GitHub Actions自動実行 → TestFlight
 
 ### ✅ アップロード処理（googleAuthService.js 137行〜）
 - Step1: blob取得 → Step2: uploadトークン → Step3: batchCreate → Step4: batchAddMediaItems
+
+### ✅ ゴミ箱表示（v0.3.94で確定）
+- `TrashWebScreen.js` - WebViewでphotos.google.com/trashを開く
+- ページ埋め込みデータからパターン1 `["AF1Qip...",["https://...` で抽出
+- サムネイルURLはレスポンスに含まれる実際のURLを使用
+- **詳細はARCHITECTURE.mdの「ゴミ箱表示の仕組み」参照**
 
 ---
 

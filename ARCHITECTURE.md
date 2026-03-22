@@ -139,8 +139,91 @@ await Exify.write(asset.uri, {
 
 ---
 
+---
+
+## 🗑️ ゴミ箱表示の仕組み（2026-03-23 追加・v0.3.94確定）
+
+### 概要
+
+ゴミ箱画面（`TrashWebScreen.js`）は、Google Photosのゴミ箱にある写真を一覧表示し、復元機能を提供する。
+
+### なぜWebViewスクレイピングが必要か
+
+- **公式APIにゴミ箱取得機能がない**：Google Photos APIにはゴミ箱の一覧を取得するエンドポイントが存在しない
+- **非公式APIも不安定**：`getTrashItems`を試みたが、認証トークンの取得が困難で信頼性が低い
+- **WebViewでページデータを抽出**：`https://photos.google.com/trash`をWebViewで開き、ページに埋め込まれた初期データをJavaScriptで抽出する
+
+### データ抽出の仕組み（苦労ポイント）
+
+Google Photosのページには`AF_initDataCallback`というスクリプトでデータが埋め込まれている。この中からゴミ箱アイテムを抽出する。
+
+**v0.3.89〜v0.3.93で失敗した方法：**
+- ❌ DOMの`img`要素から抽出 → Google Photosは遅延ロードのため、img要素が存在しない
+- ❌ 背景画像から抽出 → 同様に要素が存在しない
+- ❌ `AF1Qip`を雑に全部抽出 → セッションデータ等も拾って誤検出（黒い画像が表示される問題）
+- ❌ 厳密なパターン`["AF1Qip...", "数字", null, "dedupKey"]` → 実際の構造と異なりマッチしない
+
+**v0.3.94で成功した方法（パターン1）：**
+```javascript
+// パターン: ["AF1Qip...",["https://...
+const pattern1 = /\["(AF1Qip[A-Za-z0-9_-]+)",\s*\["(https:\/\/[^"]+)"/g;
+```
+
+このパターンで、mediaKeyとサムネイルURLを同時に抽出できる。サムネイルURLはレスポンスに含まれている実際のURLを使用し、`=w256-h256-c`を付与してサイズ指定。
+
+### データ構造
+
+Google Photosのゴミ箱データは以下の構造：
+```
+["AF1QipXXXX...", ["https://lh3.googleusercontent.com/...", width, height, ...], timestamp, dedupKey, ...]
+```
+
+- `[0]`: mediaKey（AF1Qipで始まる識別子）
+- `[1][0]`: サムネイルURL（lh3.googleusercontent.comドメイン）
+- `[2]`: タイムスタンプ
+- `[3]`: dedupKey（削除APIで使用）
+
+### 注意点
+
+1. **スクリプト二重実行対策**：WebViewの`onLoad`が複数回発火するため、`pendingRequest`でリクエストIDを管理し、古いレスポンスを無視
+2. **サムネイルURLの形式**：URLに`=`が含まれていない場合のみ`=w256-h256-c`を付与
+3. **デバッグ情報**：`af1qipCount`と`af1qipSample`でページ上のデータ量と形式を確認可能
+
+### 画面構成
+
+- **ヘッダー**：「← 戻る」「ゴミ箱」「選択」
+- **グリッド表示**：3列、サムネイルは正方形
+- **選択モード**：複数選択して一括復元可能
+- **バージョン表示**：画面右下に`BUILD_VERSION`
+
+---
+
+## 🔧 バージョン管理の仕組み（2026-03-23 追加）
+
+### BUILD_VERSION一括更新
+
+各画面に`BUILD_VERSION`定数があり、OTAアップデート時に更新が必要。
+
+**更新が必要なファイル：**
+- `src/screens/HomeWebScreen.js`
+- `src/screens/TrashWebScreen.js`
+- `src/screens/AlbumSelectWebScreen.js`
+- `src/screens/FavoritesWebScreen.js`
+- `SESSION_STATE.md`
+
+**一括更新スクリプト：**
+```bash
+./scripts/bump-version.sh v0.3.XX
+```
+
+このスクリプトで全ファイルのBUILD_VERSIONとSESSION_STATE.mdを一括更新できる。
+
+---
+
 ## 📋 確定バージョン
 
 **v0.3.67** (2026-03-22 確定)
-
 RSさん確認済み：「アルバム一覧とか削除リロード関連は完璧っぽい」
+
+**v0.3.94** (2026-03-23 確定)
+RSさん確認済み：ゴミ箱表示機能復活、サムネイル正常表示、誤検出解消
