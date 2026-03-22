@@ -22,7 +22,7 @@ import {
 } from '../services/googlePhotosWebApi';
 import { addDebugLog } from '../services/googleAuthService';
 
-const BUILD_VERSION = 'v0.3.86';
+const BUILD_VERSION = 'v0.3.87';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const NUM_COLUMNS = 3;
 const ITEM_SIZE = SCREEN_WIDTH / NUM_COLUMNS;
@@ -133,10 +133,18 @@ export default function TrashWebScreen({ navigation, route }) {
       (function() {
         const requestId = '${requestId}';
         
+        // 即座にスクリプト開始を通知
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'TRASH_SCRIPT_START',
+          requestId: requestId,
+          url: window.location.href
+        }));
+        
         try {
           // 少し待ってからデータを取得（遅延読み込み対策）
           setTimeout(() => {
-            const imageData = [];
+            try {
+              const imageData = [];
             
             // 方法1: 画像要素から取得
             const images = document.querySelectorAll('img[src*="googleusercontent.com"]');
@@ -211,6 +219,13 @@ export default function TrashWebScreen({ navigation, route }) {
                 url: window.location.href,
               }
             }));
+            } catch (innerError) {
+              window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'TRASH_ERROR',
+                requestId: requestId,
+                error: 'setTimeout内: ' + innerError.message
+              }));
+            }
           }, 2000); // 2秒待つ
         } catch (e) {
           window.ReactNativeWebView.postMessage(JSON.stringify({
@@ -291,6 +306,12 @@ export default function TrashWebScreen({ navigation, route }) {
     try {
       const message = JSON.parse(event.nativeEvent.data);
       console.log('📨 WebView message:', message.type, message.debug);
+      addDebugLog('TRASH', `WebView message: ${message.type} ${JSON.stringify(message.debug || message.error || {}).substring(0, 200)}`);
+
+      if (message.type === 'TRASH_SCRIPT_START') {
+        addDebugLog('TRASH', `Script started, URL: ${message.url}`);
+        return;
+      }
 
       if (message.type === 'TRASH_RESPONSE') {
         if (message.requestId !== pendingRequest.current) {
