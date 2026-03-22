@@ -22,7 +22,7 @@ import {
 } from '../services/googlePhotosWebApi';
 import { addDebugLog } from '../services/googleAuthService';
 
-const BUILD_VERSION = 'v0.3.87';
+const BUILD_VERSION = 'v0.3.88';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const NUM_COLUMNS = 3;
 const ITEM_SIZE = SCREEN_WIDTH / NUM_COLUMNS;
@@ -226,7 +226,7 @@ export default function TrashWebScreen({ navigation, route }) {
                 error: 'setTimeout内: ' + innerError.message
               }));
             }
-          }, 2000); // 2秒待つ
+          }, 5000); // 5秒待つ（Google Photosの遅延読み込み対策）
         } catch (e) {
           window.ReactNativeWebView.postMessage(JSON.stringify({
             type: 'TRASH_ERROR',

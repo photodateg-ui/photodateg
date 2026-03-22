@@ -47,7 +47,7 @@ const STORAGE_KEYS = {
   DELETED_ALBUMS: '@photov_deleted_albums', // 削除済みアルバムのmediaKeyリスト（復活防止）
 };
 
-const BUILD_VERSION = 'v0.3.87';
+const BUILD_VERSION = 'v0.3.88';
 // Force rebuild
 
 /**
