@@ -493,6 +493,11 @@ export function getPhotoUrl(baseThumb, width = 400, height = 400, crop = true) {
 export function getFullSizeUrl(baseThumb, maxWidth = 4096, maxHeight = 4096) {
   if (!baseThumb) return null;
   
+  // ローカルURI（file://やcontent://）はそのまま返す（楽観的更新で追加された写真）
+  if (baseThumb.startsWith('file://') || baseThumb.startsWith('content://') || baseThumb.startsWith('ph://')) {
+    return baseThumb;
+  }
+  
   const baseUrl = baseThumb.split('=')[0];
   return `${baseUrl}=w${maxWidth}-h${maxHeight}`;
 }
@@ -505,6 +510,11 @@ export function getFullSizeUrl(baseThumb, maxWidth = 4096, maxHeight = 4096) {
  */
 export function getVideoUrl(baseThumb) {
   if (!baseThumb) return null;
+  
+  // ローカルURI（file://やcontent://）はそのまま返す（楽観的更新で追加された動画）
+  if (baseThumb.startsWith('file://') || baseThumb.startsWith('content://') || baseThumb.startsWith('ph://')) {
+    return baseThumb;
+  }
   
   const baseUrl = baseThumb.split('=')[0];
   return `${baseUrl}=dv`;
