@@ -1063,18 +1063,54 @@ export default function HomeWebScreen({ route, navigation }) {
       addDebugLog('UPLOAD', `Selected ${result.assets.length} assets`);
       addDebugLog('UPLOAD', `First asset:`, JSON.stringify(result.assets[0]));
 
+      // EXIF書き込み処理（iOSがファイルコピー時にEXIFを消すことがあるため）
+      const processedAssets = [];
+      for (const asset of result.assets) {
+        try {
+          // 動画はEXIF書き込みスキップ
+          if (asset.type === 'video' || asset.mimeType?.startsWith('video/')) {
+            processedAssets.push(asset);
+            continue;
+          }
+
+          // EXIF情報があれば書き込み
+          if (asset.exif && (asset.exif.DateTimeOriginal || asset.exif.DateTime)) {
+            addDebugLog('UPLOAD', `Writing EXIF to ${asset.uri.substring(0, 50)}...`);
+            addDebugLog('UPLOAD', `EXIF data:`, JSON.stringify(asset.exif).substring(0, 200));
+            
+            try {
+              const { Exify } = require('@lodev09/react-native-exify');
+              await Exify.write(asset.uri, {
+                DateTimeOriginal: asset.exif.DateTimeOriginal,
+                DateTime: asset.exif.DateTime || asset.exif.DateTimeOriginal,
+              });
+              addDebugLog('UPLOAD', `EXIF written successfully`);
+            } catch (exifyError) {
+              addDebugLog('UPLOAD', `EXIF write failed (continuing): ${exifyError.message}`);
+              // EXIF書き込み失敗しても続行
+            }
+          } else {
+            addDebugLog('UPLOAD', `No EXIF data for asset, skipping EXIF write`);
+          }
+          processedAssets.push(asset);
+        } catch (assetError) {
+          addDebugLog('UPLOAD', `Asset processing error: ${assetError.message}`);
+          processedAssets.push(asset); // エラーでも続行
+        }
+      }
+
       // OAuth 2.0認証を確認
       let auth = await getStoredAuth();
       if (!auth?.accessToken) {
         // 認証がない場合、認証画面を開く
         addDebugLog('UPLOAD', 'No auth token, prompting Google OAuth');
-        setPendingUploadAssets(result.assets);
+        setPendingUploadAssets(processedAssets);
         promptGoogleAsync();
         return;
       }
 
       // OAuth 2.0経由でアップロード実行
-      await performUpload(result.assets, auth.accessToken);
+      await performUpload(processedAssets, auth.accessToken);
     } catch (error) {
       console.error('Upload error:', error);
       Alert.alert('エラー', 'アップロードに失敗しました');
