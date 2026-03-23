@@ -22,7 +22,7 @@ import {
 } from '../services/googlePhotosWebApi';
 import { addDebugLog } from '../services/googleAuthService';
 
-const BUILD_VERSION = 'v0.3.89';
+const BUILD_VERSION = 'v0.3.90';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const NUM_COLUMNS = 3;
 const ITEM_SIZE = SCREEN_WIDTH / NUM_COLUMNS;
@@ -132,50 +132,96 @@ export default function TrashWebScreen({ navigation, route }) {
     return `
       (function() {
         const requestId = '${requestId}';
-        
+
         try {
+          // mediaKeyの直後からdedupKey（[3]番目の要素）を抽出するヘルパー
+          // 構造: ["AF1Qip...", [url,...], timestamp, "dedupKey", ...]
+          function extractDedupKey(text, afterMediaKeyPos) {
+            var depth = 0, inString = false, escape = false, commas = 0, i = afterMediaKeyPos;
+            while (i < text.length) {
+              var c = text[i];
+              if (escape) { escape = false; i++; continue; }
+              if (inString) {
+                if (c === '\\\\') { escape = true; }
+                else if (c === '"') { inString = false; }
+                i++; continue;
+              }
+              if (c === '"') { inString = true; i++; continue; }
+              if (c === '[' || c === '(') { depth++; i++; continue; }
+              if (c === ']' || c === ')') {
+                depth--;
+                if (depth < 0) return null;
+                i++; continue;
+              }
+              if (c === ',' && depth === 0) {
+                commas++;
+                if (commas === 3) {
+                  i++;
+                  while (i < text.length && (text[i] === ' ' || text[i] === '\\n' || text[i] === '\\r')) i++;
+                  if (i < text.length && text[i] === '"') {
+                    var start = i + 1, j = start;
+                    while (j < text.length && text[j] !== '"') {
+                      if (text[j] === '\\\\') j++;
+                      j++;
+                    }
+                    var key = text.substring(start, j);
+                    return key.length > 5 ? key : null;
+                  }
+                  return null;
+                }
+              }
+              i++;
+            }
+            return null;
+          }
+
           // 方法1: ページの初期データ（AF_initDataCallback）から取得
           let trashItems = [];
-          
+
           // scriptタグからデータを探す
           const scripts = document.querySelectorAll('script');
           for (const script of scripts) {
             const text = script.textContent || '';
-            
+
             // AF1Qipで始まるmediaKeyを含むデータを探す
             if (text.includes('AF1Qip') && text.includes('googleusercontent')) {
-              // JSONっぽい部分を抽出
-              const matches = text.matchAll(/"(AF1Qip[A-Za-z0-9_-]+)"/g);
-              for (const match of matches) {
+              const mediaKeyRegex = /"(AF1Qip[A-Za-z0-9_-]+)"/g;
+              let match;
+              while ((match = mediaKeyRegex.exec(text)) !== null) {
                 const mediaKey = match[1];
                 if (!trashItems.find(item => item.mediaKey === mediaKey)) {
+                  const dedupKey = extractDedupKey(text, match.index + match[0].length);
                   trashItems.push({
                     id: 'script_' + trashItems.length,
                     mediaKey: mediaKey,
+                    dedupKey: dedupKey,
                     thumb: 'https://lh3.googleusercontent.com/' + mediaKey + '=w256-h256-c',
                   });
                 }
               }
             }
           }
-          
+
           // 方法2: WIZ_global_dataから取得
           if (trashItems.length === 0 && window.WIZ_global_data) {
             const wizStr = JSON.stringify(window.WIZ_global_data);
-            const wizMatches = wizStr.matchAll(/"(AF1Qip[A-Za-z0-9_-]+)"/g);
-            for (const match of wizMatches) {
+            const mediaKeyRegex = /"(AF1Qip[A-Za-z0-9_-]+)"/g;
+            let match;
+            while ((match = mediaKeyRegex.exec(wizStr)) !== null) {
               const mediaKey = match[1];
               if (!trashItems.find(item => item.mediaKey === mediaKey)) {
+                const dedupKey = extractDedupKey(wizStr, match.index + match[0].length);
                 trashItems.push({
                   id: 'wiz_' + trashItems.length,
                   mediaKey: mediaKey,
+                  dedupKey: dedupKey,
                   thumb: 'https://lh3.googleusercontent.com/' + mediaKey + '=w256-h256-c',
                 });
               }
             }
           }
-          
-          // 方法3: document.bodyからAF1Qipを検索
+
+          // 方法3: document.bodyからAF1Qipを検索（dedupKeyなし・フォールバック）
           if (trashItems.length === 0) {
             const bodyText = document.body.innerHTML;
             const bodyMatches = bodyText.matchAll(/AF1Qip[A-Za-z0-9_-]{10,}/g);
@@ -185,12 +231,14 @@ export default function TrashWebScreen({ navigation, route }) {
                 trashItems.push({
                   id: 'body_' + trashItems.length,
                   mediaKey: mediaKey,
+                  dedupKey: null,
                   thumb: 'https://lh3.googleusercontent.com/' + mediaKey + '=w256-h256-c',
                 });
               }
             }
           }
           
+          const dedupCount = trashItems.filter(item => item.dedupKey).length;
           window.ReactNativeWebView.postMessage(JSON.stringify({
             type: 'TRASH_RESPONSE',
             requestId: requestId,
@@ -198,6 +246,7 @@ export default function TrashWebScreen({ navigation, route }) {
             debug: {
               method: trashItems.length > 0 ? (trashItems[0].id.split('_')[0]) : 'none',
               totalFound: trashItems.length,
+              dedupCount: dedupCount,
               url: window.location.href,
               hasWizData: !!window.WIZ_global_data,
             }
