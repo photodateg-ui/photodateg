@@ -145,7 +145,7 @@ export default function TrashWebScreen({ navigation, route }) {
     return `
       (function() {
         const requestId = '${requestId}';
-        
+
         try {
           let trashItems = [];
           let debugInfo = { imgCount: 0, bgCount: 0, dataCount: 0, initDataItems: 0 };
@@ -181,6 +181,7 @@ export default function TrashWebScreen({ navigation, route }) {
                   trashItems.push({
                     id: 'bg_' + trashItems.length,
                     mediaKey: mediaKey,
+                    dedupKey: dedupKey,
                     thumb: 'https://lh3.googleusercontent.com/' + mediaKey + '=w256-h256-c',
                   });
                 }
