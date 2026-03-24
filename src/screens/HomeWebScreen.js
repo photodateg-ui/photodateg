@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
+import { getFavorites, addFavorite, removeFavorite } from '../services/favoritesService';
 import {
   View,
   Text,
@@ -55,6 +56,7 @@ import {
   moveItemsToTrashBatch,
   getAlbumPage,
   deleteAlbum,
+  getDedupKeyFromMediaKey,
   sessionManager,
 } from '../services/googlePhotosWebApi';
 
@@ -141,7 +143,7 @@ const chunkArray = (array, size) => {
 };
 
 // 個別の写真アイテムコンポーネント（expo-image使用で高速キャッシュ）
-const PhotoItem = React.memo(({ photo, onPress, onLongPress, selectionMode, isSelected }) => {
+const PhotoItem = React.memo(({ photo, onPress, onLongPress, selectionMode, isSelected, isFavorite }) => {
   const photoUrl = getPhotoUrl(photo.thumb, 200, 200, true);
   const isVideo = isVideoItem(photo);
 
@@ -179,6 +181,11 @@ const PhotoItem = React.memo(({ photo, onPress, onLongPress, selectionMode, isSe
               <Text style={styles.livePhotoText}>LIVE</Text>
             </View>
           )}
+          {isFavorite && (
+            <View style={styles.favoriteBadge}>
+              <Text style={styles.favoriteBadgeText}>★</Text>
+            </View>
+          )}
           {selectionMode && (
             <View style={[styles.selectionIndicator, isSelected && styles.selectionIndicatorSelected]}>
               {isSelected && <Text style={styles.checkmark}>✓</Text>}
@@ -213,6 +220,7 @@ export default function HomeWebScreen({ route, navigation }) {
   const [selectedPhotos, setSelectedPhotos] = useState(new Set());
   const [isDownloading, setIsDownloading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [favoriteKeys, setFavoriteKeys] = useState(new Set());
   const [isAlbumInitialized, setIsAlbumInitialized] = useState(false); // アルバム情報の初期化完了フラグ
 
   // Gemini推奨：WebViewリセット用のkey
@@ -234,6 +242,8 @@ export default function HomeWebScreen({ route, navigation }) {
   const pollingTimerRef = useRef(null); // ポーリングタイマー
   const shouldStopPolling = useRef(false); // ポーリング停止フラグ
   const hasOptimisticUpdate = useRef(false); // アップロード楽観的更新フラグ
+  const hasLoadedOnce = useRef(false); // 初回ロード完了フラグ（フォーカス時リロード用）
+  const onRefreshRef = useRef(null); // onRefreshの最新版をrefで保持
 
   // Google認証hook
   const [googleRequest, googleResponse, promptGoogleAsync] = useGoogleAuthConfig();
@@ -1003,6 +1013,18 @@ export default function HomeWebScreen({ route, navigation }) {
     }
   }, [loadPhotos, isWebViewReady, albumMediaKey, sessionData]);
 
+  // onRefreshの最新版をrefに保持（useFocusEffectから安全に呼び出すため）
+  useEffect(() => {
+    onRefreshRef.current = onRefresh;
+  }, [onRefresh]);
+
+  // ローディングが完了したら初回ロード済みフラグを立てる
+  useEffect(() => {
+    if (!isLoading && !error && photos.length > 0) {
+      hasLoadedOnce.current = true;
+    }
+  }, [isLoading, error, photos.length]);
+
   const openPhotoDetail = useCallback((photo) => {
     // 全写真をフラット化
     const allPhotos = photoSections.flatMap(section => section.data);
@@ -1281,7 +1303,16 @@ export default function HomeWebScreen({ route, navigation }) {
   // 画面フォーカス時の処理：画面から離れる時にポーリングを停止
   useFocusEffect(
     useCallback(() => {
-      // 画面にフォーカスが当たった時（何もしない）
+      // お気に入りリストを更新
+      getFavorites().then(favs => {
+        setFavoriteKeys(new Set(favs.map(f => f.mediaKey)));
+      });
+
+      // 初回ロード済みかつ楽観的更新中でなければ、フォーカス時に写真を再取得
+      // （ゴミ箱から復元後など、他画面からの戻りで最新状態を反映するため）
+      if (hasLoadedOnce.current && !hasOptimisticUpdate.current) {
+        onRefreshRef.current?.();
+      }
 
       return () => {
         // 画面からフォーカスが外れた時：ポーリングを停止
@@ -1490,17 +1521,33 @@ export default function HomeWebScreen({ route, navigation }) {
       addDebugLog('DELETE', `Found ${selectedPhotoObjects.length} photo objects`);
 
       // dedupKeyを持つ写真と持たない写真を分類
-      const photosWithDedupKey = selectedPhotoObjects.filter(p => p.dedupKey);
+      let photosWithDedupKey = selectedPhotoObjects.filter(p => p.dedupKey);
       const photosWithoutDedupKey = selectedPhotoObjects.filter(p => !p.dedupKey);
 
       addDebugLog('DELETE', `Photos with dedupKey: ${photosWithDedupKey.length}, without: ${photosWithoutDedupKey.length}`);
 
       // dedupKeyなし・apiMediaItemIdありの写真（楽観的更新で追加）→ アルバムから除外
       const photosRemovableByApi = photosWithoutDedupKey.filter(p => p.apiMediaItemId);
+
+      // dedupKeyなし・apiMediaItemIdなしの写真 → VrseUb APIでdedupKeyを取得して削除
+      const photosNeedingDedupKey = photosWithoutDedupKey.filter(p => !p.apiMediaItemId);
+      if (photosNeedingDedupKey.length > 0) {
+        addDebugLog('DELETE', `Fetching dedupKey for ${photosNeedingDedupKey.length} photos via VrseUb...`);
+        const fetched = await Promise.all(
+          photosNeedingDedupKey.map(async (p) => {
+            const dedupKey = await getDedupKeyFromMediaKey(p.mediaKey);
+            return dedupKey ? { ...p, dedupKey } : null;
+          })
+        );
+        const recovered = fetched.filter(Boolean);
+        addDebugLog('DELETE', `Recovered dedupKey for ${recovered.length}/${photosNeedingDedupKey.length} photos`);
+        photosWithDedupKey = [...photosWithDedupKey, ...recovered];
+      }
+
       if (photosWithDedupKey.length === 0 && photosRemovableByApi.length === 0) {
         Alert.alert(
           '削除できません',
-          '選択された写真を削除できませんでした。\n\n画面を更新してから再度お試しください。'
+          '選択された写真の情報を取得できませんでした。\n\n画面を更新してから再度お試しください。'
         );
         setIsDeleting(false);
         return;
@@ -1591,6 +1638,23 @@ export default function HomeWebScreen({ route, navigation }) {
       setIsDeleting(false);
     }
   }, [onRefresh, photos]);
+
+  // 選択した写真のお気に入りトグル
+  const toggleFavoritesForSelected = useCallback(async () => {
+    if (selectedPhotos.size === 0) return;
+    const allPhotos = photoSections.flatMap(s => s.data);
+    const selected = allPhotos.filter(p => selectedPhotos.has(p.mediaKey));
+    const allFavorited = selected.every(p => favoriteKeys.has(p.mediaKey));
+
+    if (allFavorited) {
+      for (const p of selected) await removeFavorite(p.mediaKey);
+    } else {
+      for (const p of selected) await addFavorite(p);
+    }
+
+    const newFavs = await getFavorites();
+    setFavoriteKeys(new Set(newFavs.map(f => f.mediaKey)));
+  }, [selectedPhotos, photoSections, favoriteKeys]);
 
   // 選択した写真を削除（ゴミ箱に移動）
   const deleteSelectedPhotos = useCallback(async () => {
@@ -2044,6 +2108,7 @@ export default function HomeWebScreen({ route, navigation }) {
             }}
             selectionMode={selectionMode}
             isSelected={selectedPhotos.has(photo.mediaKey)}
+            isFavorite={favoriteKeys.has(photo.mediaKey)}
           />
         </View>
       ))}
@@ -2051,7 +2116,7 @@ export default function HomeWebScreen({ route, navigation }) {
         <View key={`empty-${index}`} style={styles.photoWrapper} />
       ))}
     </View>
-  ), [openPhotoDetail, selectionMode, selectedPhotos, togglePhotoSelection, isCoverPhotoMode, handleSelectCoverPhoto]);
+  ), [openPhotoDetail, selectionMode, selectedPhotos, togglePhotoSelection, isCoverPhotoMode, handleSelectCoverPhoto, favoriteKeys]);
 
   // WebView（非表示）
   // WebViewエラーハンドリング
@@ -2166,8 +2231,17 @@ export default function HomeWebScreen({ route, navigation }) {
               {selectedPhotos.size}枚を選択中
             </Text>
             <View style={styles.selectionActions}>
-              <TouchableOpacity 
-                style={[styles.uploadButton, styles.downloadButtonStyle]} 
+              <TouchableOpacity
+                style={styles.uploadButton}
+                onPress={toggleFavoritesForSelected}
+                disabled={selectedPhotos.size === 0}
+              >
+                <Text style={styles.uploadButtonText}>
+                  {selectedPhotos.size > 0 && [...selectedPhotos].every(k => favoriteKeys.has(k)) ? '★' : '☆'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.uploadButton, styles.downloadButtonStyle]}
                 onPress={downloadSelectedPhotos}
                 disabled={isDownloading || selectedPhotos.size === 0}
               >
@@ -2177,8 +2251,8 @@ export default function HomeWebScreen({ route, navigation }) {
                   <Text style={styles.uploadButtonText}>↓</Text>
                 )}
               </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.deleteTextButton]} 
+              <TouchableOpacity
+                style={[styles.deleteTextButton]}
                 onPress={deleteSelectedPhotos}
                 disabled={isDeleting || selectedPhotos.size === 0}
               >
@@ -2548,6 +2622,18 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: 'bold',
     color: '#333',
+  },
+  favoriteBadge: {
+    position: 'absolute',
+    bottom: 5,
+    right: 5,
+  },
+  favoriteBadgeText: {
+    color: '#FFD700',
+    fontSize: 13,
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
   emptyContainer: {
     flex: 1,

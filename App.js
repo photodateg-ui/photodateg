@@ -28,6 +28,7 @@ import PhotoDetailWebScreen from './src/screens/PhotoDetailWebScreen';
 import WebManageScreen from './src/screens/WebManageScreen';
 import TrashWebScreen from './src/screens/TrashWebScreen';
 import FavoritesWebScreen from './src/screens/FavoritesWebScreen';
+import AlbumSearchScreen from './src/screens/AlbumSearchScreen';
 
 const Stack = createStackNavigator();
 
@@ -142,6 +143,7 @@ export default function App() {
         />
         <Stack.Screen name="TrashWeb" component={TrashWebScreen} />
         <Stack.Screen name="FavoritesWeb" component={FavoritesWebScreen} />
+        <Stack.Screen name="AlbumSearch" component={AlbumSearchScreen} />
         
         {/* OAuth 方式（公式・旧方式） */}
         <Stack.Screen name="Login" component={LoginScreen} />

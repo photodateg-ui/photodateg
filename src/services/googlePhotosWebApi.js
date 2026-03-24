@@ -17,6 +17,7 @@ const RPC_IDS = {
   TRASH_OPERATIONS: 'XwAOJf',     // 削除・復元操作（Gemini確認済み）
   DELETE_ALBUM: 'nV6Qv',          // アルバム削除（実機Network検証済み 2026-02-25）
   GET_TRASH_ITEMS: 'zy0lHe',      // ゴミ箱一覧取得（PC検証 2026-03-22、空配列でリクエスト）
+  GET_PHOTO_DETAIL: 'VrseUb',     // 写真詳細取得（PC検証 2026-03-23、dedupKeyがレスポンス[3]に含まれる）
 };
 
 /**
@@ -153,7 +154,7 @@ export async function makeApiRequest(rpcid, requestData, options = {}) {
  * @param {object} options - オプション（retry等）
  * @returns {Promise<any>} パースされたレスポンス
  */
-async function makeApiRequestForTrash(rpcid, requestData, options = {}) {
+async function makeApiRequestForTrash(rpcid, requestData, options = {}, sourceMediaKey = null) {
   const { maxRetries = 3, retryDelay = 2000 } = options;
 
   if (!sessionManager.isValid) {
@@ -161,12 +162,14 @@ async function makeApiRequestForTrash(rpcid, requestData, options = {}) {
   }
 
   // PC検証結果: f.req=[[["zy0lHe","[]",null,"1"]]]
-  const wrappedData = [[[rpcid, JSON.stringify(requestData), null, '1']]];
+  const wrappedData = [[[rpcid, JSON.stringify(requestData), null, 'generic']]];
   const requestBody = `f.req=${encodeURIComponent(JSON.stringify(wrappedData))}&at=${encodeURIComponent(sessionManager.at)}&`;
 
+  // PC検証: source-pathは /trash/{mediaKey} 形式（mediaKeyがある場合）
+  const sourcePath = sourceMediaKey ? `/trash/${sourceMediaKey}` : '/trash';
   const params = new URLSearchParams({
     rpcids: rpcid,
-    'source-path': '/trash',  // ゴミ箱用に変更
+    'source-path': sourcePath,
     'f.sid': sessionManager.sid,
     bl: sessionManager.bl,
     rt: 'c',
@@ -582,12 +585,35 @@ export async function moveItemsToTrash(dedupKeys) {
 }
 
 /**
+ * mediaKeyからdedupKeyを取得（VrseUb RPC）
+ * ゴミ箱一覧(eNG3nf)はdedupKeyを返さないため、復元前にこれで取得する
+ * PC検証 2026-03-23: レスポンス[3]にdedupKeyが入っている
+ *
+ * @param {string} mediaKey - AF1Qip...形式のmediaKey
+ * @returns {Promise<string|null>} dedupKey
+ */
+export async function getDedupKeyFromMediaKey(mediaKey) {
+  try {
+    // PC検証 2026-03-23: requestData=[mediaKey, null, null, 1], source-path=/trash/{mediaKey}
+    const requestData = [mediaKey, null, null, 1];
+    const response = await makeApiRequestForTrash(RPC_IDS.GET_PHOTO_DETAIL, requestData, {}, mediaKey);
+    // response[0]がphotoデータ配列、そのindex[3]がdedupKey
+    const dedupKey = response?.[0]?.[3] || null;
+    console.log(`[DEDUP] mediaKey=${mediaKey.substring(0, 20)}... dedupKey=${dedupKey}`);
+    return dedupKey;
+  } catch (error) {
+    console.error('[DEDUP] getDedupKeyFromMediaKey failed:', error.message);
+    return null;
+  }
+}
+
+/**
  * 写真をゴミ箱から復元
  *
  * @param {string[]} dedupKeys - 復元する写真のdedupKey配列
  * @returns {Promise<any>} 復元結果
  */
-export async function restoreFromTrash(dedupKeys) {
+export async function restoreFromTrash(dedupKeys, sourceMediaKey = null) {
   if (!Array.isArray(dedupKeys) || dedupKeys.length === 0) {
     throw new Error('dedupKeysは空でない配列である必要があります');
   }
@@ -596,15 +622,44 @@ export async function restoreFromTrash(dedupKeys) {
     throw new Error('一度に復元できるのは50件までです');
   }
 
-  // リクエスト形式: [null, 3, dedupKeyArray, 2]
-  // 3 = 復元操作、2 = 固定値
+  // moveItemsToTrashと同じmakeApiRequestを使用（source-path: /u/0/photos）
   const requestData = [null, 3, dedupKeys, 2];
 
   try {
-    const response = await makeApiRequest(RPC_IDS.TRASH_OPERATIONS, requestData);
-    return response[0];
+    const response = await makeApiRequest(RPC_IDS.TRASH_OPERATIONS, requestData, { maxRetries: 1 });
+    console.log('[RESTORE] Response:', JSON.stringify(response)?.substring(0, 200));
+    return response?.[0] ?? null;
   } catch (error) {
-    console.error('[RESTORE] Error in restoreFromTrash:', error);
+    console.error('[RESTORE] Error:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * ゴミ箱から完全に削除
+ * PC検証 2026-03-23: [null, 2, dedupKeys, 2], source-path=/trash/{mediaKey}
+ *
+ * @param {string[]} dedupKeys - 削除する写真のdedupKey配列
+ * @param {string|null} sourceMediaKey - source-path用のmediaKey
+ * @returns {Promise<any>} 削除結果
+ */
+export async function permanentlyDeleteFromTrash(dedupKeys, sourceMediaKey = null) {
+  if (!Array.isArray(dedupKeys) || dedupKeys.length === 0) {
+    throw new Error('dedupKeysは空でない配列である必要があります');
+  }
+
+  if (dedupKeys.length > 50) {
+    throw new Error('一度に削除できるのは50件までです');
+  }
+
+  const requestData = [null, 2, dedupKeys, 2];
+
+  try {
+    const response = await makeApiRequest(RPC_IDS.TRASH_OPERATIONS, requestData, { maxRetries: 1 });
+    console.log('[PERM_DELETE] Response:', JSON.stringify(response)?.substring(0, 200));
+    return response?.[0] ?? null;
+  } catch (error) {
+    console.error('[PERM_DELETE] Error:', error.message);
     throw error;
   }
 }

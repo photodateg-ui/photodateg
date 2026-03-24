@@ -47,8 +47,7 @@ const STORAGE_KEYS = {
   DELETED_ALBUMS: '@photov_deleted_albums', // 削除済みアルバムのmediaKeyリスト（復活防止）
 };
 
-const BUILD_VERSION = 'v0.3.115';
-// Force rebuild
+const BUILD_VERSION = 'v0.3.131';
 
 /**
  * アルバム選択画面
@@ -1268,20 +1267,22 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
         }
       />
 
-      {/* お気に入り・ゴミ箱ボタン */}
-      <View style={styles.specialFoldersRow}>
-        <TouchableOpacity
-          style={styles.specialFolderButton}
-          onPress={() => navigation.navigate('FavoritesWeb', { sessionData })}
-        >
-          <Text style={styles.specialFolderButtonText}>☆ お気に入り</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.specialFolderButton}
-          onPress={() => navigation.navigate('TrashWeb', { sessionData })}
-        >
-          <Text style={styles.specialFolderButtonText}>🗑️ ゴミ箱</Text>
-        </TouchableOpacity>
+      {/* 特殊フォルダ・機能ボタン */}
+      <View style={styles.specialFoldersGrid}>
+        <View style={styles.specialFoldersRow}>
+          <TouchableOpacity
+            style={styles.specialFolderButton}
+            onPress={() => navigation.navigate('FavoritesWeb', { sessionData })}
+          >
+            <Text style={styles.specialFolderButtonText}>☆ お気に入り</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.specialFolderButton}
+            onPress={() => navigation.navigate('TrashWeb', { sessionData })}
+          >
+            <Text style={styles.specialFolderButtonText}>🗑️ ゴミ箱</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <TouchableOpacity
@@ -1527,10 +1528,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#999',
   },
-  specialFoldersRow: {
-    flexDirection: 'row',
+  specialFoldersGrid: {
     marginHorizontal: 15,
     marginTop: 10,
+    gap: 10,
+  },
+  specialFoldersRow: {
+    flexDirection: 'row',
     gap: 10,
   },
   specialFolderButton: {
@@ -1539,6 +1543,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
     borderRadius: 10,
     alignItems: 'center',
+  },
+  specialFolderButtonEmpty: {
+    backgroundColor: 'transparent',
   },
   specialFolderButtonText: {
     fontSize: 15,

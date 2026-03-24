@@ -18,6 +18,7 @@ import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system/legacy';
 import { getFullSizeUrl, isVideoItem } from '../services/googlePhotosWebApi';
+import { isFavorite, addFavorite, removeFavorite } from '../services/favoritesService';
 // Exify: ネイティブモジュールのため動的require（Expo Goではスキップ）
 
 const { width, height } = Dimensions.get('window');
@@ -27,11 +28,34 @@ export default function PhotoDetailWebScreen({ route, navigation }) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isFav, setIsFav] = useState(false);
 
   // 画像URLリストを作成（オリジナルサイズ、制限なし）
   const imageUrls = photos.map(photo => ({
     url: getFullSizeUrl(photo.thumb, 0, 0), // オリジナルサイズそのまま
   }));
+
+  // 現在の写真のお気に入り状態を確認
+  useEffect(() => {
+    const photo = photos[currentIndex];
+    if (photo?.mediaKey) {
+      isFavorite(photo.mediaKey).then(setIsFav);
+    }
+  }, [currentIndex]);
+
+  // お気に入りトグル
+  const toggleFavorite = useCallback(async () => {
+    const photo = photos[currentIndex];
+    if (!photo?.mediaKey) return;
+
+    if (isFav) {
+      await removeFavorite(photo.mediaKey);
+      setIsFav(false);
+    } else {
+      await addFavorite(photo);
+      setIsFav(true);
+    }
+  }, [currentIndex, isFav, photos]);
 
   // 前後の画像をプリロード
   useEffect(() => {
@@ -377,17 +401,25 @@ export default function PhotoDetailWebScreen({ route, navigation }) {
               : ''}
           </Text>
 
-          <TouchableOpacity
-            style={styles.downloadButton}
-            onPress={downloadCurrentPhoto}
-            disabled={isDownloading}
-          >
-            {isDownloading ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text style={styles.downloadButtonText}>⬇</Text>
-            )}
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.iconButton}
+              onPress={toggleFavorite}
+            >
+              <Text style={styles.iconButtonText}>{isFav ? '★' : '☆'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.iconButton}
+              onPress={downloadCurrentPhoto}
+              disabled={isDownloading}
+            >
+              {isDownloading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.iconButtonText}>⬇</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       </SafeAreaView>
 
@@ -520,7 +552,11 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 15,
   },
-  downloadButton: {
+  headerActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  iconButton: {
     backgroundColor: 'rgba(0,0,0,0.5)',
     width: 40,
     height: 40,
@@ -528,7 +564,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  downloadButtonText: {
+  iconButtonText: {
     color: '#fff',
     fontSize: 20,
   },

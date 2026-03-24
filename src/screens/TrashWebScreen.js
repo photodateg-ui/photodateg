@@ -17,12 +17,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   getPhotoUrl,
   restoreFromTrash,
+  permanentlyDeleteFromTrash,
   getTrashItems,
+  getDedupKeyFromMediaKey,
   sessionManager,
 } from '../services/googlePhotosWebApi';
 import { addDebugLog } from '../services/googleAuthService';
+import { getFavorites } from '../services/favoritesService';
+import { useFocusEffect } from '@react-navigation/native';
 
-const BUILD_VERSION = 'v0.3.115';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const NUM_COLUMNS = 3;
 const ITEM_SIZE = SCREEN_WIDTH / NUM_COLUMNS;
@@ -49,9 +52,19 @@ export default function TrashWebScreen({ navigation, route }) {
   const [selectedItems, setSelectedItems] = useState(new Set());
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [favoriteKeys, setFavoriteKeys] = useState(new Set());
 
   const webViewRef = useRef(null);
   const pendingRequest = useRef(null);
+
+  // フォーカス時にお気に入りリストを更新
+  useFocusEffect(
+    useCallback(() => {
+      getFavorites().then(favs => {
+        setFavoriteKeys(new Set(favs.map(f => f.mediaKey)));
+      });
+    }, [])
+  );
 
   // セッションデータを読み込む
   useEffect(() => {
@@ -269,6 +282,27 @@ export default function TrashWebScreen({ navigation, route }) {
             }
           }
           
+          // 全メソッド共通: dedupKeyが未取得のアイテムに後付けで抽出
+          if (trashItems.length > 0) {
+            const allScripts = document.querySelectorAll('script');
+            for (const item of trashItems) {
+              if (!item.dedupKey) {
+                for (const sc of allScripts) {
+                  const t = sc.textContent || '';
+                  const idx = t.indexOf('"' + item.mediaKey + '"');
+                  if (idx >= 0) {
+                    const after = t.substring(idx, idx + 500);
+                    // 構造: "AF1Qip...", [url_array], timestamp, "dedupKey"
+                    // ],timestamp,"dedupKey" のパターンを探す
+                    const m = after.match(/\],\s*\d+,\s*"([A-Za-z0-9_/+=]{10,40})"/);
+                    if (m) { item.dedupKey = m[1]; break; }
+                  }
+                }
+              }
+            }
+          }
+
+          const dedupCount = trashItems.filter(item => item.dedupKey).length;
           window.ReactNativeWebView.postMessage(JSON.stringify({
             type: 'TRASH_RESPONSE',
             requestId: requestId,
@@ -276,6 +310,7 @@ export default function TrashWebScreen({ navigation, route }) {
             debug: {
               method: trashItems.length > 0 ? (trashItems[0].id.split('_')[0]) : 'none',
               totalFound: trashItems.length,
+              dedupCount: dedupCount,
               url: window.location.href,
               hasWizData: !!window.WIZ_global_data,
               ...debugInfo,
@@ -408,7 +443,7 @@ export default function TrashWebScreen({ navigation, route }) {
       } else {
         addDebugLog('TRASH', `Script injection failed: script=${!!script}, webViewRef=${!!webViewRef.current}`);
       }
-    }, 1500);
+    }, 500);
   }, [generateGetTrashScript]);
 
   // WebViewエラー時
@@ -420,28 +455,9 @@ export default function TrashWebScreen({ navigation, route }) {
   }, []);
 
   // リフレッシュ
-  const onRefresh = useCallback(async () => {
+  const onRefresh = useCallback(() => {
     setIsRefreshing(true);
-    addDebugLog('TRASH', 'onRefresh called');
-    
-    // まずAPIを試す
-    if (sessionManager.isValid) {
-      try {
-        addDebugLog('TRASH', 'Refreshing via API...');
-        const result = await getTrashItems(null, 100);
-        if (result.items) {
-          setItems(result.items);
-          setIsRefreshing(false);
-          addDebugLog('TRASH', `Refreshed ${result.items.length} trash items via API`);
-          return;
-        }
-      } catch (err) {
-        addDebugLog('TRASH', `Refresh API error: ${err.message}`);
-      }
-    }
-    
-    // APIが失敗したらWebViewをリロード
-    addDebugLog('TRASH', 'Falling back to WebView refresh');
+    addDebugLog('TRASH', 'onRefresh: reloading WebView');
     setWebViewKey(prev => prev + 1);
     setIsWebViewReady(false);
   }, []);
@@ -452,19 +468,34 @@ export default function TrashWebScreen({ navigation, route }) {
     setSelectedItems(new Set());
   }, [isSelectionMode]);
 
-  // アイテム選択
-  const toggleItemSelection = useCallback((item) => {
-    if (!item.dedupKey) {
-      Alert.alert('エラー', 'この写真は復元できません（dedupKeyがありません）');
-      return;
+  // アイテム選択（dedupKeyがない場合はVrseUb APIで取得）
+  const toggleItemSelection = useCallback(async (item) => {
+    let dedupKey = item.dedupKey;
+
+    if (!dedupKey) {
+      try {
+        addDebugLog('TRASH', `Fetching dedupKey for mediaKey=${item.mediaKey.substring(0, 20)}...`);
+        dedupKey = await getDedupKeyFromMediaKey(item.mediaKey);
+        if (dedupKey) {
+          // アイテムのdedupKeyを更新
+          setItems(prev => prev.map(i => i.id === item.id ? { ...i, dedupKey } : i));
+          addDebugLog('TRASH', `dedupKey fetched: ${dedupKey}`);
+        } else {
+          Alert.alert('エラー', 'この写真の情報を取得できませんでした');
+          return;
+        }
+      } catch (err) {
+        Alert.alert('エラー', 'エラーが発生しました: ' + err.message);
+        return;
+      }
     }
 
     setSelectedItems(prev => {
       const newSet = new Set(prev);
-      if (newSet.has(item.dedupKey)) {
-        newSet.delete(item.dedupKey);
+      if (newSet.has(dedupKey)) {
+        newSet.delete(dedupKey);
       } else {
-        newSet.add(item.dedupKey);
+        newSet.add(dedupKey);
       }
       return newSet;
     });
@@ -485,14 +516,18 @@ export default function TrashWebScreen({ navigation, route }) {
             setIsRestoring(true);
             try {
               const dedupKeys = Array.from(selectedItems);
-              await restoreFromTrash(dedupKeys);
+              // source-path用に選択アイテムのmediaKeyを取得
+              const firstSelectedItem = items.find(item => selectedItems.has(item.dedupKey));
+              await restoreFromTrash(dedupKeys, firstSelectedItem?.mediaKey);
               
               // 復元した写真をリストから削除
               setItems(prev => prev.filter(item => !selectedItems.has(item.dedupKey)));
               setSelectedItems(new Set());
               setIsSelectionMode(false);
-              
-              Alert.alert('完了', '写真を復元しました');
+
+              Alert.alert('完了', '写真を復元しました', [
+                { text: 'OK', onPress: () => navigation.goBack() },
+              ]);
             } catch (error) {
               console.error('Restore failed:', error);
               Alert.alert('エラー', '復元に失敗しました: ' + error.message);
@@ -505,10 +540,47 @@ export default function TrashWebScreen({ navigation, route }) {
     );
   }, [selectedItems]);
 
+  // 選択した写真を完全に削除
+  const permanentlyDeleteSelectedItems = useCallback(async () => {
+    if (selectedItems.size === 0) return;
+
+    Alert.alert(
+      '完全に削除',
+      `${selectedItems.size}枚の写真を完全に削除しますか？\nこの操作は取り消せません。`,
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: '削除',
+          style: 'destructive',
+          onPress: async () => {
+            setIsRestoring(true);
+            try {
+              const dedupKeys = Array.from(selectedItems);
+              const firstSelectedItem = items.find(item => selectedItems.has(item.dedupKey));
+              await permanentlyDeleteFromTrash(dedupKeys, firstSelectedItem?.mediaKey);
+
+              setItems(prev => prev.filter(item => !selectedItems.has(item.dedupKey)));
+              setSelectedItems(new Set());
+              setIsSelectionMode(false);
+
+              Alert.alert('完了', '写真を完全に削除しました');
+            } catch (error) {
+              console.error('Permanent delete failed:', error);
+              Alert.alert('エラー', '削除に失敗しました: ' + error.message);
+            } finally {
+              setIsRestoring(false);
+            }
+          },
+        },
+      ]
+    );
+  }, [selectedItems, items]);
+
   // 写真アイテムのレンダリング
   const renderItem = useCallback(({ item }) => {
     const isSelected = selectedItems.has(item.dedupKey);
     const thumbUrl = getPhotoUrl(item.thumb, 200, 200, true);
+    const isFav = favoriteKeys.has(item.mediaKey);
 
     return (
       <TouchableOpacity
@@ -535,6 +607,11 @@ export default function TrashWebScreen({ navigation, route }) {
           contentFit="cover"
           cachePolicy="memory-disk"
         />
+        {isFav && (
+          <View style={styles.favoriteBadge}>
+            <Text style={styles.favoriteBadgeText}>★</Text>
+          </View>
+        )}
         {isSelectionMode && (
           <View style={[
             styles.selectionIndicator,
@@ -545,7 +622,7 @@ export default function TrashWebScreen({ navigation, route }) {
         )}
       </TouchableOpacity>
     );
-  }, [isSelectionMode, selectedItems, toggleItemSelection]);
+  }, [isSelectionMode, selectedItems, toggleItemSelection, favoriteKeys]);
 
   // ヘッダー
   const renderHeader = () => (
@@ -619,17 +696,30 @@ export default function TrashWebScreen({ navigation, route }) {
       {isSelectionMode && selectedItems.size > 0 && (
         <View style={styles.selectionFooter}>
           <Text style={styles.selectionCount}>{selectedItems.size}枚選択中</Text>
-          <TouchableOpacity
-            onPress={restoreSelectedItems}
-            style={styles.restoreButton}
-            disabled={isRestoring}
-          >
-            {isRestoring ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text style={styles.restoreButtonText}>復元</Text>
-            )}
-          </TouchableOpacity>
+          <View style={styles.footerButtons}>
+            <TouchableOpacity
+              onPress={permanentlyDeleteSelectedItems}
+              style={styles.deleteButton}
+              disabled={isRestoring}
+            >
+              {isRestoring ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.deleteButtonText}>完全に削除</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={restoreSelectedItems}
+              style={styles.restoreButton}
+              disabled={isRestoring}
+            >
+              {isRestoring ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.restoreButtonText}>復元</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       )}
 
@@ -652,8 +742,6 @@ export default function TrashWebScreen({ navigation, route }) {
         </View>
       )}
 
-      {/* バージョン表示 */}
-      <Text style={styles.versionText}>{BUILD_VERSION}</Text>
     </SafeAreaView>
   );
 }
@@ -781,6 +869,21 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
   },
+  footerButtons: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  deleteButton: {
+    backgroundColor: '#cc3333',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  deleteButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
   restoreButton: {
     backgroundColor: '#4285F4',
     paddingHorizontal: 24,
@@ -791,6 +894,18 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
     fontSize: 16,
+  },
+  favoriteBadge: {
+    position: 'absolute',
+    bottom: 5,
+    right: 5,
+  },
+  favoriteBadgeText: {
+    color: '#FFD700',
+    fontSize: 13,
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
   hiddenWebView: {
     width: 1,
@@ -803,12 +918,5 @@ const styles = StyleSheet.create({
     left: -9999,
     width: 1,
     height: 1,
-  },
-  versionText: {
-    position: 'absolute',
-    bottom: 4,
-    right: 8,
-    color: '#444',
-    fontSize: 10,
   },
 });
