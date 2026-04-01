@@ -7,6 +7,8 @@
  * 注意: この API は非公式であり、Google の仕様変更により動作しなくなる可能性があります
  */
 
+import { addDebugLog } from './googleAuthService';
+
 // RPC ID 定義
 const RPC_IDS = {
   GET_ALBUMS: 'Z5xsfc',           // アルバム一覧取得
@@ -16,6 +18,7 @@ const RPC_IDS = {
   GET_SHARED_LINKS: 'F2A0H',      // 共有リンク一覧
   TRASH_OPERATIONS: 'XwAOJf',     // 削除・復元操作（Gemini確認済み）
   DELETE_ALBUM: 'nV6Qv',          // アルバム削除（実機Network検証済み 2026-02-25）
+  CREATE_PUBLIC_SHARE: 'yI1ii',    // 公開共有リンク作成（PC Network検証 2026-04-01 リンクを作成ボタン）
   GET_TRASH_ITEMS: 'zy0lHe',      // ゴミ箱一覧取得（PC検証 2026-03-22、空配列でリクエスト）
   GET_PHOTO_DETAIL: 'VrseUb',     // 写真詳細取得（PC検証 2026-03-23、dedupKeyがレスポンス[3]に含まれる）
 };
@@ -68,7 +71,7 @@ export const sessionManager = new SessionManager();
  * @returns {Promise<any>} パースされたレスポンス
  */
 export async function makeApiRequest(rpcid, requestData, options = {}) {
-  const { maxRetries = 3, retryDelay = 2000 } = options;
+  const { maxRetries = 3, retryDelay = 2000, sourcePath = '/u/0/photos', useUserPath = false, extraParams = {}, skipPageId = false } = options;
 
   if (!sessionManager.isValid) {
     throw new Error('セッションが無効です。再度ログインしてください。');
@@ -77,16 +80,21 @@ export async function makeApiRequest(rpcid, requestData, options = {}) {
   const wrappedData = [[[rpcid, JSON.stringify(requestData), null, 'generic']]];
   const requestBody = `f.req=${encodeURIComponent(JSON.stringify(wrappedData))}&at=${encodeURIComponent(sessionManager.at)}&`;
 
-  const params = new URLSearchParams({
+  const paramsObj = {
     rpcids: rpcid,
-    'source-path': '/u/0/photos',
+    'source-path': sourcePath,
     'f.sid': sessionManager.sid,
     bl: sessionManager.bl,
-    pageId: 'none',
     rt: 'c',
-  });
+    ...extraParams,
+  };
+  if (!skipPageId) paramsObj.pageId = 'none';
+  const params = new URLSearchParams(paramsObj);
 
-  const url = `https://photos.google.com/_/PhotosUi/data/batchexecute?${params.toString()}`;
+  const baseUrl = useUserPath
+    ? 'https://photos.google.com/u/0/_/PhotosUi/data/batchexecute'
+    : 'https://photos.google.com/_/PhotosUi/data/batchexecute';
+  const url = `${baseUrl}?${params.toString()}`;
 
   let lastError = null;
 
@@ -95,7 +103,13 @@ export async function makeApiRequest(rpcid, requestData, options = {}) {
       const headers = {
         'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
       };
-      
+
+      // /u/0/ エンドポイント使用時は追加ヘッダーが必要
+      if (useUserPath) {
+        headers['x-same-domain'] = '1';
+        headers['x-goog-ext-353267353-jspb'] = '[null,null,null,128907]';
+      }
+
       // Cookie があれば追加
       if (sessionManager.cookies) {
         headers['Cookie'] = sessionManager.cookies;
@@ -128,6 +142,11 @@ export async function makeApiRequest(rpcid, requestData, options = {}) {
       const parsedData = JSON.parse(jsonLines[0]);
 
       if (!parsedData?.[0]?.[2]) {
+        if (options.logEmptyPayload) {
+          addDebugLog('API_RAW', `${rpcid} empty payload`, {
+            row0: JSON.stringify(parsedData?.[0])?.slice(0, 500),
+          });
+        }
         throw new Error('レスポンスにペイロードがありません');
       }
 
@@ -776,7 +795,7 @@ export async function deleteAlbum(apiAlbumId) {
 
   try {
     // maxRetries: 1 → DELETEはリトライ不要（成功時はペイロードなしで返る）
-    const response = await makeApiRequest(RPC_IDS.DELETE_ALBUM, requestData, { maxRetries: 1 });
+    const response = await makeApiRequest(RPC_IDS.DELETE_ALBUM, requestData, { maxRetries: 1, sourcePath: '/albums' });
     return response;
   } catch (error) {
     // DELETEのレスポンスはペイロードなしの場合がある（HTTPリクエスト自体は成功）
@@ -788,6 +807,60 @@ export async function deleteAlbum(apiAlbumId) {
     console.error('[DELETE_ALBUM] Error:', error);
     throw error;
   }
+}
+
+/**
+ * アルバムの公開共有リンクを作成して取得
+ *
+ * PC Network検証 2026-04-01:
+ *   yI1ii: [[albumId], 2] → 公開リンクを作成（「リンクを作成」ボタン）
+ *   レスポンスに photos.app.goo.gl URL が含まれる場合はそのまま返す
+ *
+ * @param {string} apiAlbumId - アルバムID（AF1Qip...形式）
+ * @returns {Promise<{shareableUrl?: string, needsReload?: boolean}>}
+ */
+export async function createAlbumShareLink(apiAlbumId) {
+  if (!apiAlbumId) {
+    throw new Error('apiAlbumIdが必要です');
+  }
+
+  addDebugLog('SHARE', 'yI1ii start', { apiAlbumId });
+
+  const requestData = [[apiAlbumId], 2];
+  let resp = null;
+  try {
+    resp = await makeApiRequest(RPC_IDS.CREATE_PUBLIC_SHARE, requestData, {
+      maxRetries: 1,
+      sourcePath: `/u/0/share/${apiAlbumId}`,
+      useUserPath: true,
+      logEmptyPayload: true,
+      skipPageId: true,
+      extraParams: { 'soc-app': '165', 'soc-platform': '1', 'soc-device': '1' },
+    });
+    addDebugLog('SHARE', 'yI1ii response', resp);
+  } catch (e) {
+    // ペイロードなし = 成功扱い（DELETE_ALBUMと同様）
+    if (e.message.includes('ペイロードがありません') ||
+        e.message.includes('wrb.fr エンベロープが見つかりません') ||
+        e.message.includes('空のレスポンス')) {
+      addDebugLog('SHARE', 'yI1ii empty payload (ok, needs reload)', {});
+      return { needsReload: true };
+    }
+    addDebugLog('SHARE', 'yI1ii error', { error: e.message });
+    throw e;
+  }
+
+  // レスポンスから photos.app.goo.gl URL を探す
+  const respStr = JSON.stringify(resp);
+  const urlMatch = respStr.match(/https:\/\/photos\.app\.goo\.gl\/[A-Za-z0-9]+/);
+  if (urlMatch) {
+    addDebugLog('SHARE', 'URL found', { url: urlMatch[0] });
+    return { shareableUrl: urlMatch[0] };
+  }
+
+  // URLがレスポンスにない場合はリロードして再取得が必要
+  addDebugLog('SHARE', 'URL not in response, needs reload', {});
+  return { needsReload: true };
 }
 
 /**

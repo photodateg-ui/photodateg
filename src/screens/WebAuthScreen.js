@@ -53,7 +53,7 @@ export default function WebAuthScreen({ navigation, route }) {
       if (savedSession) {
         const sessionDataStored = JSON.parse(savedSession);
         // セッションが24時間以内なら再利用
-        if (sessionDataStored.savedAt && Date.now() - sessionDataStored.savedAt < 24 * 60 * 60 * 1000) {
+        if (sessionDataStored.savedAt && Date.now() - sessionDataStored.savedAt < 30 * 24 * 60 * 60 * 1000) {
           console.log('保存済みセッションを使用');
           if (sessionManager.setFromWizData(sessionDataStored.wizData)) {
             // 保存済みアルバムがあれば直接Home画面へ

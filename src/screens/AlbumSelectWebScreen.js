@@ -21,10 +21,11 @@ import { WebView } from 'react-native-webview';
 import {
   getPhotoUrl,
   generateGetAlbumsScript,
+  generateCreateShareLinkScript,
   parseAlbumsResponse,
   generateRequestId,
 } from '../services/webViewApiClient';
-import { deleteAlbum } from '../services/googlePhotosWebApi';
+import { deleteAlbum, createAlbumShareLink } from '../services/googlePhotosWebApi';
 import {
   clearAuth,
   getStoredAuth,
@@ -47,7 +48,7 @@ const STORAGE_KEYS = {
   DELETED_ALBUMS: '@photov_deleted_albums', // 削除済みアルバムのmediaKeyリスト（復活防止）
 };
 
-const BUILD_VERSION = 'v0.3.131';
+const BUILD_VERSION = 'v0.3.159';
 
 /**
  * アルバム選択画面
@@ -80,6 +81,7 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
   const [newAlbumName, setNewAlbumName] = useState('');
   const [isCreatingAlbum, setIsCreatingAlbum] = useState(false);
   const [pendingAlbumName, setPendingAlbumName] = useState(null);
+  const [pendingShareAlbum, setPendingShareAlbum] = useState(null);
   const [showRenameDialog, setShowRenameDialog] = useState(false);
   const [renameAlbum, setRenameAlbum] = useState(null);
   const [newTitle, setNewTitle] = useState('');
@@ -97,6 +99,36 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
     if (!initialAlbums.length && !initialSessionData) {
       loadSessionAndRedirect();
     }
+  }, []);
+
+  // WebAuthScreenから渡された初期アルバムにもAPP_CREATED_ALBUMSを照合する
+  useEffect(() => {
+    if (initialAlbums.length === 0) return;
+    const applyAppCreated = async () => {
+      try {
+        const savedAlbums = await AsyncStorage.getItem(STORAGE_KEYS.APP_CREATED_ALBUMS);
+        const appCreatedAlbums = savedAlbums ? JSON.parse(savedAlbums) : {};
+        const apiAlbumIds = Object.keys(appCreatedAlbums);
+        if (apiAlbumIds.length === 0) return;
+
+        const updated = initialAlbums.map(album => {
+          for (const apiAlbumId of apiAlbumIds) {
+            const albumData = appCreatedAlbums[apiAlbumId];
+            if (albumData.mediaKey && albumData.mediaKey === album.mediaKey) {
+              return { ...album, apiAlbumId, createdByApp: true };
+            }
+            if (albumData.title === album.title || albumData.originalTitle === album.title) {
+              return { ...album, apiAlbumId, createdByApp: true };
+            }
+          }
+          return album;
+        });
+        setAlbums(updated);
+      } catch (e) {
+        console.warn('APP_CREATED_ALBUMS初期照合エラー:', e);
+      }
+    };
+    applyAppCreated();
   }, []);
   
   // autoReselect: アップロード後に自動で前のアルバムを再選択
@@ -275,7 +307,6 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
         console.warn('APP_CREATED_ALBUMS読み込みエラー:', e);
       }
 
-      // デバッグ用Alertは削除
 
       // DELETED_ALBUMSに含まれるアルバムを除外（復活防止）
       let filteredAlbums = sortedAlbums;
@@ -482,15 +513,21 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
 
   // Google認証レスポンスを監視
   useEffect(() => {
-    if (googleResponse?.type === 'success' && pendingAlbumName) {
+    if (googleResponse?.type === 'success') {
       handleAuthResponse(googleResponse).then(authData => {
         if (authData) {
-          performCreateAlbum(pendingAlbumName, authData.accessToken);
+          if (pendingAlbumName) {
+            performCreateAlbum(pendingAlbumName, authData.accessToken);
+          }
+          if (pendingShareAlbum) {
+            performCopyShareLink(pendingShareAlbum, authData.accessToken);
+          }
         }
         setPendingAlbumName(null);
+        setPendingShareAlbum(null);
       });
     }
-  }, [googleResponse, pendingAlbumName]);
+  }, [googleResponse, pendingAlbumName, pendingShareAlbum]);
 
   // 実際のアルバム作成処理
   const performCreateAlbum = useCallback(async (albumName, accessToken) => {
@@ -538,7 +575,17 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
         addDebugLog('ALBUM', `Failed to save app created album: ${e.message}`);
       }
       
-      // アルバム作成完了 - 自動的にそのアルバムを選択
+      // 作成したアルバムを即座にリストに追加（楽観的更新）
+      setAlbums(prev => [{
+        mediaKey: null,
+        title: albumName,
+        apiAlbumId: album.id,
+        createdByApp: true,
+        itemCount: 0,
+        isShared: false,
+      }, ...prev]);
+
+      // アルバム作成完了
       setShowCreateAlbum(false);
       setNewAlbumName('');
       
@@ -553,16 +600,7 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
       console.log('📝 [PERFORM_CREATE] Saving to SELECTED_ALBUM:', JSON.stringify(selectedAlbumData, null, 2));
       await AsyncStorage.setItem(STORAGE_KEYS.SELECTED_ALBUM, JSON.stringify(selectedAlbumData));
       
-      Alert.alert(
-        'アルバム作成完了',
-        `「${albumName}」を作成しました。`,
-        [
-          {
-            text: 'OK',
-            onPress: () => onRefresh()
-          }
-        ]
-      );
+      Alert.alert('アルバム作成完了', `「${albumName}」を作成しました。`);
     } catch (error) {
       addDebugLog('ALBUM', `Create album error: ${error.message}`);
       Alert.alert('エラー', `アルバム作成に失敗しました\n\n${error.message}`);
@@ -591,25 +629,102 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
     await performCreateAlbum(newAlbumName.trim(), auth.accessToken);
   }, [newAlbumName, promptGoogleAsync, performCreateAlbum]);
 
+  // 共有リンクの実処理（accessToken取得済み）
+  const performCopyShareLink = useCallback(async (album, accessToken) => {
+    try {
+      const shareResult = await shareAlbum(accessToken, album.apiAlbumId);
+      const shareableUrl = shareResult.shareInfo?.shareableUrl;
+      if (!shareableUrl) {
+        Alert.alert('エラー', '共有リンクの取得に失敗しました。');
+        return;
+      }
+      // AsyncStorageに保存
+      const savedAlbums = await AsyncStorage.getItem(STORAGE_KEYS.APP_CREATED_ALBUMS);
+      const appCreatedAlbums = savedAlbums ? JSON.parse(savedAlbums) : {};
+      if (appCreatedAlbums[album.apiAlbumId]) {
+        appCreatedAlbums[album.apiAlbumId].shareableUrl = shareableUrl;
+        await AsyncStorage.setItem(STORAGE_KEYS.APP_CREATED_ALBUMS, JSON.stringify(appCreatedAlbums));
+      }
+      await Clipboard.setStringAsync(shareableUrl);
+      Alert.alert('コピー完了', '共有リンクをクリップボードにコピーしました');
+    } catch (e) {
+      console.error('共有リンクコピーエラー:', e);
+      Alert.alert('エラー', `共有リンクの取得に失敗しました: ${e.message}`);
+    }
+  }, []);
+
   // 共有リンクをコピー
   const handleCopyShareLink = useCallback(async (album) => {
     try {
-      // APP_CREATED_ALBUMSからshareableUrlを取得
+      addDebugLog('SHARE', 'handleCopyShareLink called', {
+        hasShareableUrl: !!album.shareableUrl,
+        mediaKey: album.mediaKey,
+        apiAlbumId: album.apiAlbumId,
+        hasSession: !!sessionData,
+        hasWebView: !!webViewRef.current,
+      });
+
+      // extDataから直接取得できる場合（既に共有済み）
+      if (album.shareableUrl) {
+        addDebugLog('SHARE', 'direct copy from shareableUrl', {});
+        await Clipboard.setStringAsync(album.shareableUrl);
+        Alert.alert('コピー完了', '共有リンクをクリップボードにコピーしました');
+        return;
+      }
+
+      // APP_CREATED_ALBUMSにshareableUrlが保存済みか確認
       const savedAlbums = await AsyncStorage.getItem(STORAGE_KEYS.APP_CREATED_ALBUMS);
       const appCreatedAlbums = savedAlbums ? JSON.parse(savedAlbums) : {};
-      const albumData = appCreatedAlbums[album.apiAlbumId];
-      
-      if (albumData?.shareableUrl) {
-        await Clipboard.setStringAsync(albumData.shareableUrl);
+      const shareableUrl = appCreatedAlbums[album.apiAlbumId]?.shareableUrl;
+
+      if (shareableUrl) {
+        addDebugLog('SHARE', 'copy from APP_CREATED_ALBUMS', {});
+        await Clipboard.setStringAsync(shareableUrl);
         Alert.alert('コピー完了', '共有リンクをクリップボードにコピーしました');
-      } else {
-        Alert.alert('エラー', '共有リンクが見つかりません。アルバムを再作成してください。');
+        return;
       }
+
+      // 未共有アルバム → WebView経由でSFKp8c RPC実行（cookieが必要なため）
+      if (!album.mediaKey) {
+        Alert.alert('エラー', 'このアルバムは操作不可のため共有できません。');
+        return;
+      }
+      if (!sessionData || !webViewRef.current) {
+        Alert.alert('エラー', 'セッションが準備できていません。');
+        return;
+      }
+      addDebugLog('SHARE', 'WebView SFKp8c start', { mediaKey: album.mediaKey });
+      const shareRequestId = generateRequestId();
+      const shareScript = generateCreateShareLinkScript(shareRequestId, album.mediaKey, sessionData);
+
+      const shareResult = await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          pendingRequest.current = null;
+          reject(new Error('タイムアウト'));
+        }, 15000);
+        pendingRequest.current = {
+          requestId: shareRequestId,
+          resolve: (data) => { clearTimeout(timeout); resolve(data); },
+          reject: (error) => { clearTimeout(timeout); reject(error); },
+        };
+        webViewRef.current.injectJavaScript(shareScript);
+      });
+
+      addDebugLog('SHARE', 'WebView SFKp8c result', shareResult);
+
+      if (shareResult?.shareableUrl) {
+        await Clipboard.setStringAsync(shareResult.shareableUrl);
+        Alert.alert('コピー完了', '共有リンクをクリップボードにコピーしました');
+        return;
+      }
+      // URLがレスポンスにない → リロードして再取得
+      setWebViewKey(k => k + 1);
+      Alert.alert('更新中', 'アルバムリストを更新しました。\nもう一度「共有リンクをコピー」を押してください。');
     } catch (e) {
       console.error('共有リンクコピーエラー:', e);
-      Alert.alert('エラー', 'コピーに失敗しました');
+      Alert.alert('エラー', `コピーに失敗しました: ${e.message}`);
     }
-  }, []);
+  }, [sessionData]);
 
   // アルバム削除処理
   const performDeleteAlbum = useCallback(async (album) => {

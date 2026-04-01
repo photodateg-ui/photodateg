@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Updates from 'expo-updates';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { WebView } from 'react-native-webview';
 
 // OTAチャンネル設定
 if (!__DEV__) {
@@ -38,6 +39,9 @@ const STORAGE_KEYS = {
   AUTH_MODE: '@photov_auth_mode', // 'web' または 'oauth'
 };
 
+const SESSION_MAX_AGE = 30 * 24 * 60 * 60 * 1000;  // 30日
+const SESSION_REFRESH_THRESHOLD = 60 * 60 * 1000;   // 1時間以上経ったらバックグラウンド更新
+
 /**
  * PhotoV - Googleフォトビューア
  * 
@@ -48,6 +52,8 @@ const STORAGE_KEYS = {
 export default function App() {
   const [isReady, setIsReady] = useState(false);
   const [initialRoute, setInitialRoute] = useState('Startup');
+  const [showBgRefresh, setShowBgRefresh] = useState(false);
+  const bgRefreshWebViewRef = useRef(null);
 
   useEffect(() => {
     checkForOTAUpdate();
@@ -72,14 +78,17 @@ export default function App() {
     try {
       // 保存済みセッションを確認
       const savedSession = await AsyncStorage.getItem(STORAGE_KEYS.SESSION_DATA);
-      
+
       if (savedSession) {
         const sessionData = JSON.parse(savedSession);
-        
-        // セッションが24時間以内なら再利用
-        if (sessionData.savedAt && Date.now() - sessionData.savedAt < 24 * 60 * 60 * 1000) {
+
+        // セッションが30日以内なら再利用
+        if (sessionData.savedAt && Date.now() - sessionData.savedAt < SESSION_MAX_AGE) {
           if (sessionManager.setFromWizData(sessionData.wizData)) {
-            // セッション有効
+            // 1時間以上経っていればバックグラウンドで更新
+            if (Date.now() - sessionData.savedAt > SESSION_REFRESH_THRESHOLD) {
+              setShowBgRefresh(true);
+            }
             const savedAlbum = await AsyncStorage.getItem(STORAGE_KEYS.SELECTED_ALBUM);
             if (savedAlbum) {
               setInitialRoute('HomeWeb');
@@ -91,7 +100,7 @@ export default function App() {
           }
         }
       }
-      
+
       // セッションなし → スタートアップ画面へ
       setInitialRoute('Startup');
     } catch (error) {
@@ -102,12 +111,37 @@ export default function App() {
     }
   };
 
+  const handleBgRefreshMessage = useCallback(async (event) => {
+    try {
+      const message = JSON.parse(event.nativeEvent.data);
+      if (message.type === 'SESSION_DATA' && message.data?.SNlM0e) {
+        if (sessionManager.setFromWizData(message.data)) {
+          await AsyncStorage.setItem(STORAGE_KEYS.SESSION_DATA, JSON.stringify({
+            wizData: message.data,
+            savedAt: Date.now(),
+          }));
+          console.log('[BG_REFRESH] セッション更新成功');
+        }
+      }
+    } catch (e) {
+      console.warn('[BG_REFRESH] 更新エラー:', e);
+    } finally {
+      setShowBgRefresh(false);
+    }
+  }, []);
+
   if (!isReady) {
     return null; // スプラッシュ表示中
   }
 
   return (
     <SafeAreaProvider>
+      {showBgRefresh && (
+        <BackgroundSessionRefresh
+          webViewRef={bgRefreshWebViewRef}
+          onMessage={handleBgRefreshMessage}
+        />
+      )}
       <NavigationContainer>
         <StatusBar style="auto" />
         <Stack.Navigator
@@ -157,6 +191,60 @@ export default function App() {
       </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>
+  );
+}
+
+/**
+ * バックグラウンドでセッションを無音更新する非表示WebView
+ */
+function BackgroundSessionRefresh({ webViewRef, onMessage }) {
+  const extractionScript = `
+    (function() {
+      try {
+        if (typeof WIZ_global_data !== 'undefined' && WIZ_global_data.SNlM0e && WIZ_global_data.FdrFJe && WIZ_global_data.cfb2h) {
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'SESSION_DATA',
+            data: {
+              SNlM0e: WIZ_global_data.SNlM0e,
+              FdrFJe: WIZ_global_data.FdrFJe,
+              cfb2h: WIZ_global_data.cfb2h,
+              qwAQke: WIZ_global_data.qwAQke,
+            },
+          }));
+        } else {
+          window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'EXTRACTION_FAILED' }));
+        }
+      } catch(e) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'EXTRACTION_FAILED' }));
+      }
+    })();
+    true;
+  `;
+
+  return (
+    <WebView
+      ref={webViewRef}
+      source={{ uri: 'https://photos.google.com/' }}
+      style={{ width: 0, height: 0, position: 'absolute' }}
+      onLoadEnd={(e) => {
+        const url = e?.nativeEvent?.url || '';
+        if (url.includes('photos.google.com') && !url.includes('accounts.google.com')) {
+          webViewRef.current?.injectJavaScript(extractionScript);
+        } else {
+          // Cookieが切れてログインページにリダイレクトされた場合は何もしない
+          onMessage({ nativeEvent: { data: JSON.stringify({ type: 'EXTRACTION_FAILED' }) } });
+        }
+      }}
+      onMessage={onMessage}
+      onError={() => onMessage({ nativeEvent: { data: JSON.stringify({ type: 'EXTRACTION_FAILED' }) } })}
+      renderError={() => null}
+      javaScriptEnabled={true}
+      domStorageEnabled={true}
+      sharedCookiesEnabled={true}
+      incognito={false}
+      cacheEnabled={true}
+      userAgent="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
+    />
   );
 }
 

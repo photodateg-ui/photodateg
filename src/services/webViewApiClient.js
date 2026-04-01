@@ -100,6 +100,106 @@ export function generateApiRequestScript(requestId, rpcid, requestData, sessionD
 }
 
 /**
+ * アルバム公開共有リンク作成用のスクリプトを生成
+ * SFKp8c RPC を使用（レスポンスの [1] に photos.app.goo.gl URL が直接含まれる）
+ * WebViewのcookieが必要なため injectJavaScript で実行する
+ */
+export function generateCreateShareLinkScript(requestId, albumMediaKey, sessionData) {
+  const { at, sid, bl } = sessionData;
+
+  const safeAt = at.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const safeSid = (sid || '').replace(/'/g, "\\'");
+  const safeBl = (bl || '').replace(/'/g, "\\'");
+  const safeAlbumId = albumMediaKey.replace(/'/g, "\\'");
+  const safeRequestId = requestId.replace(/'/g, "\\'");
+
+  return `
+    (async function() {
+      const requestId = '${safeRequestId}';
+      const albumId = '${safeAlbumId}';
+      const at = '${safeAt}';
+
+      try {
+        // SFKp8c: 共有リンク作成。レスポンスの payload[1] に URL が入る。
+        const sfkPayload = [
+          null, null,
+          [null,1,null,null,1,null,[[[1,1],1],[[1,2],1],[[2,1],1],[[2,2],1],[[3,1],1]],null,null,null,null,null,null,[1,2]],
+          [1,[[albumId],[1,2,3]],null,null,null,null,[1]],
+          null, null, null, null,
+          [1,2,3,5,6]
+        ];
+
+        const wrappedReq = [[['SFKp8c', JSON.stringify(sfkPayload), null, 'generic']]];
+        const requestBody = 'f.req=' + encodeURIComponent(JSON.stringify(wrappedReq)) + '&at=' + encodeURIComponent(at) + '&';
+
+        const params = new URLSearchParams({
+          rpcids: 'SFKp8c',
+          'source-path': '/u/0/albums',
+          'f.sid': '${safeSid}',
+          bl: '${safeBl}',
+          'soc-app': '165',
+          'soc-platform': '1',
+          'soc-device': '1',
+          rt: 'c',
+          _cb: Date.now(),
+        });
+
+        const url = 'https://photos.google.com/u/0/_/PhotosUi/data/batchexecute?' + params.toString();
+
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+            'x-same-domain': '1',
+          },
+          body: requestBody,
+          credentials: 'include',
+          cache: 'no-store',
+        });
+
+        if (!response.ok) throw new Error('HTTP ' + response.status + ' ' + response.statusText);
+
+        const responseBody = await response.text();
+        if (!responseBody) throw new Error('空のレスポンス');
+
+        // wrb.fr ラインを探して SFKp8c のペイロードをパース
+        const lines = responseBody.split('\\n');
+        let shareableUrl = null;
+
+        for (const line of lines) {
+          if (!line.includes('wrb.fr')) continue;
+          try {
+            const parsed = JSON.parse(line);
+            if (!parsed || !parsed[0] || parsed[0][1] !== 'SFKp8c') continue;
+            const payload = JSON.parse(parsed[0][2]);
+            // payload[1] = "https://photos.app.goo.gl/..."
+            if (payload && typeof payload[1] === 'string' && payload[1].includes('photos.app.goo.gl')) {
+              shareableUrl = payload[1];
+              break;
+            }
+          } catch(e) {}
+        }
+
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'API_RESPONSE',
+          requestId: requestId,
+          success: true,
+          data: { shareableUrl: shareableUrl },
+        }));
+      } catch (error) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'API_RESPONSE',
+          requestId: requestId,
+          success: false,
+          error: error.message,
+        }));
+      }
+    })();
+    true;
+  `;
+}
+
+/**
  * アルバム一覧取得用のスクリプトを生成
  */
 export function generateGetAlbumsScript(requestId, sessionData, pageId = null, pageSize = 100) {
@@ -165,9 +265,10 @@ function parseMediaItem(itemData) {
  */
 function parseAlbum(itemData) {
   if (!itemData) return null;
-  
+
   const extData = itemData?.at?.(-1)?.[72930366];
-  
+  const isShared = extData?.[4] || false;
+
   return {
     mediaKey: itemData?.[0],
     ownerActorId: itemData?.[6]?.[0],
@@ -177,7 +278,8 @@ function parseAlbum(itemData) {
     creationTimestamp: extData?.[2]?.[4],
     modifiedTimestamp: extData?.[2]?.[9],
     timestampRange: [extData?.[2]?.[5], extData?.[2]?.[6]],
-    isShared: extData?.[4] || false,
+    isShared,
+    shareableUrl: extData?.[10] || null,
   };
 }
 

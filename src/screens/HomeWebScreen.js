@@ -434,6 +434,8 @@ export default function HomeWebScreen({ route, navigation }) {
           console.log('📂 [INIT] Found saved album, updating state...');
           console.log('📂 [INIT] Album data:', JSON.stringify(album));
 
+          isAutoLoadRef.current = true;
+
           // Gemini推奨：navigation.replaceではなく、stateを更新
           setAlbumInfo({
             mediaKey: album.mediaKey,
@@ -455,6 +457,9 @@ export default function HomeWebScreen({ route, navigation }) {
 
     initializeAlbum();
   }, [navigation]);
+
+  // AsyncStorageからのauto-load（App.js経由起動）を追跡
+  const isAutoLoadRef = useRef(false);
 
   // mediaKeyがない場合、WebViewでアルバム一覧を取得して同名のアルバムを探す
   const findingMediaKeyRef = useRef(false);
@@ -539,6 +544,15 @@ export default function HomeWebScreen({ route, navigation }) {
     
     findMediaKeyForAlbum();
   }, [albumMediaKey, albumTitle, isWebViewReady, sessionData]);
+
+  // auto-load中にエラーが発生したら黙ってアルバム一覧へ
+  useEffect(() => {
+    if (error && (route.params?.isFromAutoLoad || isAutoLoadRef.current)) {
+      AsyncStorage.removeItem(STORAGE_KEYS.SELECTED_ALBUM).then(() => {
+        navigation.replace('AlbumSelectWeb');
+      });
+    }
+  }, [error]);
 
   // WebViewの準備ができたら写真を読み込む（apiAlbumIdがあればGoogle Photos API、なければWebView経由）
   const loadPhotosRef = useRef(null);  // 現在読み込み中のアルバムKey
@@ -736,6 +750,10 @@ export default function HomeWebScreen({ route, navigation }) {
     } catch (err) {
       addDebugLog('LOAD', `ERROR: ${err.message}`);
       console.error('Load photos error:', err);
+      if (route.params?.isFromAutoLoad || isAutoLoadRef.current) {
+        await AsyncStorage.removeItem(STORAGE_KEYS.SELECTED_ALBUM);
+        navigation.replace('AlbumSelectWeb');
+      }
       return false;
     } finally {
       isLoadingPhotos.current = false;
@@ -919,6 +937,9 @@ export default function HomeWebScreen({ route, navigation }) {
           '再度ログインが必要です',
           [{ text: 'OK', onPress: () => navigation.replace('WebAuth') }]
         );
+      } else if (route.params?.isFromAutoLoad || isAutoLoadRef.current) {
+        await AsyncStorage.removeItem(STORAGE_KEYS.SELECTED_ALBUM);
+        navigation.replace('AlbumSelectWeb');
       }
     } finally {
       setIsLoading(false);
@@ -2141,6 +2162,7 @@ export default function HomeWebScreen({ route, navigation }) {
         onLoadEnd={handleWebViewLoadEnd}
         onMessage={handleWebViewMessage}
         onError={handleWebViewError}
+        renderError={() => null}
         javaScriptEnabled={true}
         domStorageEnabled={true}
         sharedCookiesEnabled={true}
