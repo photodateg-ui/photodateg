@@ -48,7 +48,7 @@ const STORAGE_KEYS = {
   DELETED_ALBUMS: '@photov_deleted_albums', // 削除済みアルバムのmediaKeyリスト（復活防止）
 };
 
-const BUILD_VERSION = 'v0.3.160';
+const BUILD_VERSION = 'v0.3.161';
 
 /**
  * アルバム選択画面
@@ -111,18 +111,29 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
         const apiAlbumIds = Object.keys(appCreatedAlbums);
         if (apiAlbumIds.length === 0) return;
 
+        let mediaKeyUpdated = false;
         const updated = initialAlbums.map(album => {
           for (const apiAlbumId of apiAlbumIds) {
             const albumData = appCreatedAlbums[apiAlbumId];
             if (albumData.mediaKey && albumData.mediaKey === album.mediaKey) {
               return { ...album, apiAlbumId, createdByApp: true };
             }
-            if (albumData.title === album.title || albumData.originalTitle === album.title) {
+            const storedTitle = (albumData.title || '').trim().toLowerCase();
+            const storedOriginal = (albumData.originalTitle || '').trim().toLowerCase();
+            const albumTitle = (album.title || '').trim().toLowerCase();
+            if (storedTitle === albumTitle || storedOriginal === albumTitle) {
+              if (album.mediaKey && !albumData.mediaKey) {
+                appCreatedAlbums[apiAlbumId].mediaKey = album.mediaKey;
+                mediaKeyUpdated = true;
+              }
               return { ...album, apiAlbumId, createdByApp: true };
             }
           }
           return album;
         });
+        if (mediaKeyUpdated) {
+          await AsyncStorage.setItem(STORAGE_KEYS.APP_CREATED_ALBUMS, JSON.stringify(appCreatedAlbums));
+        }
         setAlbums(updated);
       } catch (e) {
         console.warn('APP_CREATED_ALBUMS初期照合エラー:', e);
@@ -280,13 +291,10 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
         const savedAlbums = await AsyncStorage.getItem(STORAGE_KEYS.APP_CREATED_ALBUMS);
         const appCreatedAlbums = savedAlbums ? JSON.parse(savedAlbums) : {};
 
-        // APP_CREATED_ALBUMSから全てのapiAlbumIdを取得
         const apiAlbumIds = Object.keys(appCreatedAlbums);
+        let mediaKeyUpdated = false;
 
         sortedAlbums.forEach(album => {
-          // このアルバムのmediaKeyから実際のapiAlbumIdを探す
-          // 非公式APIのmediaKeyと公式APIのalbumIdは異なるため、
-          // APP_CREATED_ALBUMSに登録されているアルバムを探す
           for (const apiAlbumId of apiAlbumIds) {
             const albumData = appCreatedAlbums[apiAlbumId];
             // mediaKeyで照合（最優先・確実）
@@ -295,14 +303,28 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
               album.createdByApp = true;
               break;
             }
-            // タイトルで照合（フォールバック）
-            if (albumData.title === album.title || albumData.originalTitle === album.title) {
+            // タイトルで照合（trim済み・大文字小文字無視でフォールバック）
+            const storedTitle = (albumData.title || '').trim().toLowerCase();
+            const storedOriginal = (albumData.originalTitle || '').trim().toLowerCase();
+            const albumTitle = (album.title || '').trim().toLowerCase();
+            if (storedTitle === albumTitle || storedOriginal === albumTitle) {
               album.apiAlbumId = apiAlbumId;
               album.createdByApp = true;
+              // mediaKeyを書き戻す（次回以降はmediaKey照合で確実に一致）
+              if (album.mediaKey && !albumData.mediaKey) {
+                appCreatedAlbums[apiAlbumId].mediaKey = album.mediaKey;
+                mediaKeyUpdated = true;
+              }
               break;
             }
           }
         });
+
+        // mediaKeyを新たに取得できた場合はAsyncStorageに保存
+        if (mediaKeyUpdated) {
+          await AsyncStorage.setItem(STORAGE_KEYS.APP_CREATED_ALBUMS, JSON.stringify(appCreatedAlbums));
+          addDebugLog('ALBUM', 'Wrote back mediaKeys to APP_CREATED_ALBUMS');
+        }
       } catch (e) {
         console.warn('APP_CREATED_ALBUMS読み込みエラー:', e);
       }
