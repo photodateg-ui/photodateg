@@ -1,19 +1,55 @@
 # SESSION STATE
 
-最終更新: 2026-04-01
+最終更新: 2026-04-02
 
 ## 現在の状況
 
 | 項目 | 内容 |
 |------|------|
-| OTAバージョン | v0.3.159（デプロイ済み・テスト待ち） |
-| EASビルド | build 42 |
+| OTAバージョン | v0.4.0（runtimeVersion 0.4.0向け・デプロイ済み） |
+| EASビルド | 0.4.0(2) ビルド中・自動サブミット設定済み |
 | ブランチ | main |
+
+## ⚠️ 重要：TestFlightの状況
+
+| ビルド | 状態 | 備考 |
+|--------|------|------|
+| 0.3.0(2) | 提出済み・無効 | buildNumber が 43 より低いためTestFlightに出ない |
+| 0.4.0(1) | TestFlight配信済み | バイナリはv0.3.160コード状態でビルド済み |
+| 0.4.0(2) | ビルド中 | 現在のコード（v0.4.0）でビルド・OTAが正常に当たるはず |
+
+## EASビルドの失敗経緯（絶対に繰り返さない）
+
+### 問題1: buildNumber未確認
+- 0.3.0 の最大 buildNumber は TestFlight で **43** だったが、確認せずに **2** でビルド
+- TestFlight に出なかった（43 より低いため）
+- **教訓: EASビルド前に TestFlight の最大 buildNumber を必ず確認する**
+
+### 問題2: buildNumber を 1 でリセット
+- バージョンを 0.4.0 に上げた際、buildNumber を 1 にリセット
+- 0.4.0 は別バージョンなので (1) は有効だが、ユーザーは (2) を期待していた
+- **教訓: バージョン変更時もユーザーに buildNumber を確認する**
+
+### 問題3: OTA フィンガープリント不一致
+- 0.4.0(1) バイナリは v0.3.160 コード状態でビルド
+- その後コードを変更（v0.3.161, v0.4.0）してから OTA デプロイ
+- バイナリとOTAのフィンガープリントが不一致 → v0.3.161 以降のOTAが当たらず v0.3.160 に固定
+- **教訓: バイナリビルド後にコードを変更した場合は、バイナリをリビルドしないとOTAが当たらない**
 
 ## 主要機能の状態
 
 全機能 ✅ 完成済み（アルバム/写真/削除/ゴミ箱/お気に入り/検索/アップロード）
 共有リンク作成 ✅ v0.3.158で動作確認済み
+
+## OTA デプロイ履歴（runtimeVersion 0.4.0）
+
+| OTA | 内容 | 備考 |
+|-----|------|------|
+| v0.3.160 | ゴミ箱セッション切れ表示修正、runtimeVersion 0.4.0対応 | 0.4.0(1)バイナリに当たる |
+| v0.3.161 | APP_CREATED_ALBUMS照合改善・mediaKey書き戻し | フィンガープリント不一致で0.4.0(1)に当たらず |
+| v0.4.0 | BUILD_VERSION更新 | 同上 |
+
+※ 0.4.0(2) バイナリインストール後は v0.4.0 OTA が当たる予定
 
 ## 共有リンク実装経緯（2026-04-01 最終確定）
 
@@ -22,20 +58,9 @@
 
 ### 未共有アルバムの共有リンク作成
 
-#### 根本原因（確定）
-- Google Photos Web の "リンクを作成" フローは SFKp8c RPC 一発で完結
-- SFKp8c レスポンスの payload[1] に photos.app.goo.gl URL が直接入る
-- WebView のcookieが必要 → injectJavaScript で実行
-
-#### 間違いの経緯
-- v0.3.154〜157: yI1ii RPC を試みたが全て間違い（yI1ii は共有リンク作成ではない）
-- UJlKrf / wGF44d / CkpYK → アルバム共有ページのロード時に発火するだけ（共有作成とは無関係）
-- gJL1hd → serviceworker が自動的に叩くUI状態同期（共有作成とは無関係）
-
 #### 正しいフロー（PC Network解析で確定）
 1. **SFKp8c** → `source-path=/u/0/albums`、ペイロードにアルバムIDを含む
 2. レスポンス wrb.fr → payload[1] = `"https://photos.app.goo.gl/..."`
-3. 以上。gJL1hdは不要。
 
 #### SFKp8c ペイロード構造
 ```javascript
@@ -53,9 +78,34 @@ payload[1] = "https://photos.app.goo.gl/..." ← これがほしいURL
 payload[4] = 別トークン（aEJ6...形式）
 ```
 
-## v0.3.158 の変更内容
-- `generateCreateShareLinkScript` を SFKp8c に完全書き換え（yI1ii 廃止）
-- デバッグログの "yI1ii" → "SFKp8c" に更新
+## APP_CREATED_ALBUMS 照合バグの経緯（v0.3.161で修正）
+
+### 症状
+- アプリで作成したアルバムが「操作不可」バッジ付きで表示される
+- セッション切れ後の再認証で特に顕在化
+
+### 根本原因
+- `performCreateAlbum` はアルバム作成時に `mediaKey` を APP_CREATED_ALBUMS に保存しない
+  （OAuth API の createAlbum レスポンスに非公式APIの mediaKey が含まれないため）
+- タイトル照合が `===` 厳密比較のみで、空白や大文字小文字の差異で失敗
+
+### なぜ以前は起きなかったか
+- 以前はセッション有効なままHomeWebに直行するケースが多く、アルバム一覧を通らなかった
+- セッション切れで強制的に一覧を通るようになって顕在化
+
+### 修正内容（v0.3.161〜）
+- タイトル照合を `.trim().toLowerCase()` で正規化
+- タイトル照合成功時に mediaKey を APP_CREATED_ALBUMS に書き戻し（永続的な修正）
+
+## ゴミ箱の挙動について
+
+### セッション切れ問題（v0.3.160で修正）
+- TrashWebScreen が accounts.google.com にリダイレクトされると「ゴミ箱は空です」と誤表示
+- 修正: リダイレクト検知 → 「Googleのセッションが切れています」エラー表示
+
+### アルバム削除後ゴミ箱が空になる件（仕様）
+- Google Photos の仕様: アルバム削除はコンテナ削除のみ、写真はライブラリに残る
+- ゴミ箱に入るのは個別写真を「ゴミ箱に移動」した場合のみ → 正常動作
 
 ## handleCopyShareLink のフロー（AlbumSelectWebScreen.js）
 
@@ -63,64 +113,25 @@ payload[4] = 別トークン（aEJ6...形式）
 2. APP_CREATED_ALBUMS に保存済み → コピー
 3. どちらもなし → WebView経由で SFKp8c 実行 → payload[1] をコピー
 
-## アルバム作成後の一覧表示
+## アルバム一覧表示
 
-### 現状（v0.3.159）
+### 現状（v0.4.0）
 - 作成後に synthetic album をリスト先頭に楽観的追加
 - Alert OK でリフレッシュしない（表示が消えない）
 - 手動リフレッシュ後は WebView の listAlbums 結果に依存
 
-### 根本原因
-- WebView の listAlbums API は**共有済みアルバムのみ**を返す可能性が高い
-- shareAlbum（OAuth）が 403 PERMISSION_DENIED で失敗するため、アルバムが非共有のまま
-- 非共有アルバムは listAlbums に出ないため楽観的更新を採用
+### Z5xsfc（listAlbums）の制約
+- 共有済みアルバムのみを返す可能性が高い
+- 未共有アルバムは listAlbums に出ない → 楽観的更新で対応
 
-### 仕様候補（より堅牢な実装）
-WebView アルバムリスト取得後に APP_CREATED_ALBUMS の orphan（フェッチ結果にないもの）を追加する：
-```javascript
-// onMessage の APP_CREATED_ALBUMS マージ後（line ~305）に追加
-const matchedApiAlbumIds = new Set(sortedAlbums.map(a => a.apiAlbumId).filter(Boolean));
-for (const apiAlbumId of apiAlbumIds) {
-  if (!matchedApiAlbumIds.has(apiAlbumId)) {
-    const albumData = appCreatedAlbums[apiAlbumId];
-    sortedAlbums.push({
-      mediaKey: albumData.mediaKey || null,
-      title: albumData.title,
-      apiAlbumId,
-      createdByApp: true,
-      itemCount: 0,
-      isShared: false,
-    });
-  }
-}
-```
-メリット：手動リフレッシュ後も消えない  
-デメリット：Google Photos で削除済みのアルバムが残骸として表示される可能性あり（DELETED_ALBUMS で除外は可能）
-
-## 仕様書について（要件）
-
-### 求められるレベル
-- ゼロから同じアプリを再実装できる詳細度
-- 以下を全て含めること：
-  - ✅ 正解の仕様・実装（理由付き）
-  - ❌ やってはいけない仕様・アプローチ（理由付き）
-  - 🔄 試したが失敗した実装の経緯
-  - 各 RPC のペイロード構造・レスポンス構造
-  - 認証方式（WebView vs native fetch の違いと理由）
-  - 既知の制限と回避策
-
-### カバーすべき主要トピック
-1. Google Photos 非公式 API の仕組み（batchexecute）
-2. 共有リンク作成フロー（SFKp8c）の詳細と失敗経緯
-3. WebView injectJavaScript パターン（なぜ必要か）
-4. アルバム一覧取得（WebView listAlbums の制約）
-5. 削除・ゴミ箱・お気に入り・検索の各 RPC
-6. OAuth vs WebView セッション の使い分け
-7. APP_CREATED_ALBUMS の管理ロジック
+## 仕様書
+- SPEC.md に詳細仕様記載（ゼロから再実装できる詳細度）
 
 ## 残タスク
 
-- ~~共有リンク：v0.3.158の動作確認~~ ✅ 完了
+- **0.4.0(2) TestFlight 配信後、動作確認**（最優先）
+  - 操作不可バッジが正しく解消されるか確認
+  - アルバム一覧が正常表示されるか確認
 - **ゴミ箱復元後の自動リロード**（優先度：中）
 - **OAuthトークン切れ時の自動再取得**（優先度：中）
 
