@@ -15,7 +15,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.photodateg.app",
-      "buildNumber": "1",
+      "buildNumber": "2",
       "appleTeamId": "US3QET7HJR",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
