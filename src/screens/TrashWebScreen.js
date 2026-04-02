@@ -409,14 +409,22 @@ export default function TrashWebScreen({ navigation, route }) {
           return;
         }
 
-        // 新しい形式: message.itemsを直接使用
+        // セッション切れ検知: accounts.google.comにリダイレクトされた場合
+        const currentUrl = message.debug?.url || '';
+        if (currentUrl.includes('accounts.google.com')) {
+          addDebugLog('TRASH', `Session expired, redirected to: ${currentUrl.substring(0, 100)}`);
+          setError('SESSION_EXPIRED');
+          setIsLoading(false);
+          setIsRefreshing(false);
+          return;
+        }
+
         const items = message.items || [];
         console.log(`🗑️ Got ${items.length} trash items`);
-        
+
         setItems(items);
         setIsLoading(false);
         setIsRefreshing(false);
-        setError(items.length === 0 ? null : null);
       } else if (message.type === 'TRASH_ERROR') {
         console.error('Trash error:', message.error);
         setError(message.error);
@@ -650,14 +658,25 @@ export default function TrashWebScreen({ navigation, route }) {
 
   // エラー
   if (error) {
+    const isSessionExpired = error === 'SESSION_EXPIRED';
     return (
       <SafeAreaView style={styles.container}>
         {renderHeader()}
         <View style={styles.centerContent}>
-          <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity onPress={onRefresh} style={styles.retryButton}>
-            <Text style={styles.retryButtonText}>再試行</Text>
-          </TouchableOpacity>
+          <Text style={styles.errorText}>
+            {isSessionExpired
+              ? 'Googleのセッションが切れています。\nホーム画面に戻って再認証後、\nもう一度ゴミ箱を開いてください。'
+              : error}
+          </Text>
+          {isSessionExpired ? (
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.retryButton}>
+              <Text style={styles.retryButtonText}>戻る</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity onPress={onRefresh} style={styles.retryButton}>
+              <Text style={styles.retryButtonText}>再試行</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </SafeAreaView>
     );

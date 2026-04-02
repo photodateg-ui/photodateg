@@ -48,7 +48,7 @@ const STORAGE_KEYS = {
   DELETED_ALBUMS: '@photov_deleted_albums', // 削除済みアルバムのmediaKeyリスト（復活防止）
 };
 
-const BUILD_VERSION = 'v0.3.159';
+const BUILD_VERSION = 'v0.3.160';
 
 /**
  * アルバム選択画面
