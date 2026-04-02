@@ -2,7 +2,7 @@
   "expo": {
     "name": "PhotoDate G",
     "slug": "photodateg",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -15,7 +15,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.photodateg.app",
-      "buildNumber": "2",
+      "buildNumber": "1",
       "appleTeamId": "US3QET7HJR",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
