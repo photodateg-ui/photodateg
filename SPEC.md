@@ -398,7 +398,16 @@ const sortedAlbums = [...parsed.items]
 WebViewのmediaKeyとOAuth APIのalbumIdは**異なる形式**なので、
 APP_CREATED_ALBUMSに登録されたアルバムを以下の順で照合する:
 1. `albumData.mediaKey === album.mediaKey`（mediaKeyが保存済みなら確実）
-2. `albumData.title === album.title`（フォールバック）
+2. タイトル照合（trim + toLowerCase で空白・大文字小文字の差異を吸収）
+   `albumData.title.trim().toLowerCase() === album.title.trim().toLowerCase()`
+3. 照合成功時に `albumData.mediaKey` が未保存なら書き戻す（次回以降はmediaKey照合で確実に一致）
+
+❌ **やってはいけない**: タイトルを `===` で厳密比較のみにする
+→ 空白やUnicode正規化の差異で照合失敗し、アプリで作成したアルバムが「操作不可」になる（v0.3.160以前のバグ）
+
+⚠️ **既知の落とし穴**: `performCreateAlbum` はアルバム作成時に `mediaKey` を保存しない
+→ 理由: OAuth APIのcreateAlbumレスポンスには非公式APIのmediaKeyが含まれていないため
+→ mediaKeyはlistAlbumsで初めて取得できる（照合成功時に書き戻す仕組みで解決）
 
 ### 5.2 アルバム作成
 
@@ -832,7 +841,20 @@ Alert OK後もリフレッシュしない。
 
 **回避策**: Fallback 2（`SELECTED_ALBUM`から同名アルバムのIDを引き継ぐ）。
 
-### 7.3 OAuthトークン切れ時の操作不可
+### 7.3 アプリで作成したアルバムが「操作不可」になる
+
+**問題**: セッション切れ後の再認証や新規インストール後に、アプリで作成したアルバムが「操作不可」バッジ付きで表示される。
+
+**根本原因**:
+- `performCreateAlbum` はアルバム作成時に `mediaKey` をAPP_CREATED_ALBUMSに保存しない（OAuth APIレスポンスにmediaKeyがないため）
+- listAlbumsの結果とのタイトル照合が、空白・大文字小文字の差異で失敗することがあった
+- 以前は通常セッション内でアルバム一覧を通らずに済むケースが多く、顕在化しなかった
+
+**修正（v0.3.161〜）**:
+- タイトル照合を `trim().toLowerCase()` で正規化して比較
+- 照合成功時にmediaKeyをAPP_CREATED_ALBUMSに書き戻し（次回以降はmediaKey照合で確実に一致）
+
+### 7.4 OAuthトークン切れ時の操作不可
 
 **問題**: アップロード・リネーム・アルバム作成等のOAuth操作ができなくなる。
 
