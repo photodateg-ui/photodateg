@@ -48,7 +48,7 @@ const STORAGE_KEYS = {
   DELETED_ALBUMS: '@photov_deleted_albums', // 削除済みアルバムのmediaKeyリスト（復活防止）
 };
 
-const BUILD_VERSION = 'v0.4.0';
+const BUILD_VERSION = 'v0.4.5';
 
 /**
  * アルバム選択画面
@@ -109,7 +109,6 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
         const savedAlbums = await AsyncStorage.getItem(STORAGE_KEYS.APP_CREATED_ALBUMS);
         const appCreatedAlbums = savedAlbums ? JSON.parse(savedAlbums) : {};
         const apiAlbumIds = Object.keys(appCreatedAlbums);
-        if (apiAlbumIds.length === 0) return;
 
         let mediaKeyUpdated = false;
         const updated = initialAlbums.map(album => {
@@ -134,6 +133,7 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
         if (mediaKeyUpdated) {
           await AsyncStorage.setItem(STORAGE_KEYS.APP_CREATED_ALBUMS, JSON.stringify(appCreatedAlbums));
         }
+
         setAlbums(updated);
       } catch (e) {
         console.warn('APP_CREATED_ALBUMS初期照合エラー:', e);
@@ -329,7 +329,6 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
         console.warn('APP_CREATED_ALBUMS読み込みエラー:', e);
       }
 
-
       // DELETED_ALBUMSに含まれるアルバムを除外（復活防止）
       let filteredAlbums = sortedAlbums;
       try {
@@ -484,6 +483,48 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
         await AsyncStorage.removeItem(STORAGE_KEYS.SESSION_DATA);
         navigation.replace('WebAuth');
         break;
+      case 'registerAllAlbums':
+        try {
+          const savedAlbums = await AsyncStorage.getItem(STORAGE_KEYS.APP_CREATED_ALBUMS);
+          const appCreatedAlbums = savedAlbums ? JSON.parse(savedAlbums) : {};
+          const apiAlbumIds = Object.keys(appCreatedAlbums);
+          let newCount = 0;
+
+          const updatedAlbums = albums.map(album => {
+            if (album.createdByApp) return album;
+            if (!album.mediaKey) return album;
+
+            // 既存エントリとの重複チェック（mediaKey / title）
+            const alreadyExists = apiAlbumIds.some(id => {
+              const data = appCreatedAlbums[id];
+              if (data.mediaKey && data.mediaKey === album.mediaKey) return true;
+              const storedTitle = (data.title || '').trim().toLowerCase();
+              return storedTitle === (album.title || '').trim().toLowerCase();
+            });
+
+            if (!alreadyExists) {
+              appCreatedAlbums[album.mediaKey] = {
+                title: album.title || '',
+                originalTitle: album.title || '',
+                mediaKey: album.mediaKey,
+                createdAt: new Date().toISOString(),
+                registeredAt: new Date().toISOString(),
+              };
+              newCount++;
+            }
+            return { ...album, createdByApp: true };
+          });
+
+          if (newCount > 0) {
+            await AsyncStorage.setItem(STORAGE_KEYS.APP_CREATED_ALBUMS, JSON.stringify(appCreatedAlbums));
+            addDebugLog('ALBUM', `Registered ${newCount} albums as app-created`);
+          }
+          setAlbums(updatedAlbums);
+          Alert.alert('完了', `${newCount}件を新規登録しました。\n（表示中の全アルバムをマイアルバムとして扱います）`);
+        } catch (error) {
+          Alert.alert('エラー', error.message);
+        }
+        break;
       case 'syncAlbums':
         try {
           console.log('🔄 [SYNC] Starting sync...');
@@ -506,12 +547,20 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
             const savedAuth = await handleAuthResponse(result);
             console.log('🔄 [SYNC] handleAuthResponse result:', savedAuth ? 'Success' : 'Failed');
 
+            // resultにaccessTokenがない場合、useEffectがgoogleResponseを処理してトークンを保存するまで待つ
             if (!savedAuth) {
-              Alert.alert('エラー', '認証情報の保存に失敗しました。\n\nログを確認してください。');
-              break;
+              for (let i = 0; i < 6; i++) {
+                await new Promise(resolve => setTimeout(resolve, 500));
+                auth = await getStoredAuth();
+                if (auth) break;
+              }
+              if (!auth) {
+                Alert.alert('エラー', '認証情報の保存に失敗しました。\n\nログを確認してください。');
+                break;
+              }
+            } else {
+              auth = savedAuth;
             }
-
-            auth = savedAuth;
             console.log('🔄 [SYNC] Auth ready:', auth ? 'Found' : 'Not found');
           }
 
@@ -1228,6 +1277,10 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
 
             <TouchableOpacity style={[styles.debugButton, { backgroundColor: '#34A853' }]} onPress={() => handleDebugAction('syncAlbums')}>
               <Text style={styles.debugButtonText}>🔄 Sync共有アルバム</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={[styles.debugButton, { backgroundColor: '#E67E22' }]} onPress={() => handleDebugAction('registerAllAlbums')}>
+              <Text style={styles.debugButtonText}>📋 全アルバムをマイアルバム登録</Text>
             </TouchableOpacity>
 
             <View style={styles.debugLogSection}>

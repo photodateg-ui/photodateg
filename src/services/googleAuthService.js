@@ -70,6 +70,7 @@ export function useGoogleAuthConfig() {
   return Google.useAuthRequest({
     iosClientId: IOS_CLIENT_ID,
     scopes: SCOPES,
+    prompt: 'consent',
   });
 }
 
@@ -293,7 +294,7 @@ export async function listAlbums(accessToken) {
     });
     
     const result = await response.json();
-    addDebugLog('API', 'Albums response', { count: result.albums?.length || 0 });
+    addDebugLog('API', 'Albums response', { count: result.albums?.length || 0, error: result.error?.message || null, status: response.status });
     return result;
   } catch (error) {
     addDebugLog('API', 'List albums error', { error: error.message });
