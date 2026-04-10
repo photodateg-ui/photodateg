@@ -70,7 +70,6 @@ export function useGoogleAuthConfig() {
   return Google.useAuthRequest({
     iosClientId: IOS_CLIENT_ID,
     scopes: SCOPES,
-    prompt: 'consent',
   });
 }
 

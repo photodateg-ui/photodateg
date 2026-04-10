@@ -528,11 +528,14 @@ export default function TrashWebScreen({ navigation, route }) {
               // source-path用に選択アイテムのmediaKeyを取得
               const firstSelectedItem = items.find(item => selectedItems.has(item.dedupKey));
               await restoreFromTrash(dedupKeys, firstSelectedItem?.mediaKey);
-              
-              // 復元した写真をリストから削除
+
+              // 復元した写真をリストから削除（即時反映）
               setItems(prev => prev.filter(item => !selectedItems.has(item.dedupKey)));
               setSelectedItems(new Set());
               setIsSelectionMode(false);
+
+              // WebViewを再読み込みしてGoogleフォト側の状態を確認（2秒後）
+              setTimeout(() => onRefresh(), 2000);
 
               Alert.alert('完了', '写真を復元しました', [
                 { text: 'OK', onPress: () => navigation.goBack() },
@@ -547,7 +550,7 @@ export default function TrashWebScreen({ navigation, route }) {
         },
       ]
     );
-  }, [selectedItems]);
+  }, [selectedItems, onRefresh]);
 
   // 選択した写真を完全に削除
   const permanentlyDeleteSelectedItems = useCallback(async () => {
