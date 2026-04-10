@@ -93,6 +93,10 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
   const pendingRequest = useRef(null);
   const titleTapCount = useRef(0);
   const titleTapTimer = useRef(null);
+  const albumsRef = useRef(albums);
+
+  // albumsRefを常に最新のalbumsと同期（stale closure対策）
+  useEffect(() => { albumsRef.current = albums; }, [albums]);
 
   // 初期データがなければWebAuthに戻す
   useEffect(() => {
@@ -320,6 +324,9 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
           }
         });
 
+        const matchedCount = sortedAlbums.filter(a => a.createdByApp).length;
+        addDebugLog('ALBUM', `APP_CREATED_ALBUMS照合: ${matchedCount}/${sortedAlbums.length}件マッチ (登録件数=${apiAlbumIds.length})`);
+
         // mediaKeyを新たに取得できた場合はAsyncStorageに保存
         if (mediaKeyUpdated) {
           await AsyncStorage.setItem(STORAGE_KEYS.APP_CREATED_ALBUMS, JSON.stringify(appCreatedAlbums));
@@ -485,16 +492,18 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
         break;
       case 'registerAllAlbums':
         try {
+          const currentAlbums = albumsRef.current;
+          addDebugLog('ALBUM', `registerAllAlbums: currentAlbums.length=${currentAlbums.length}`);
+
           const savedAlbums = await AsyncStorage.getItem(STORAGE_KEYS.APP_CREATED_ALBUMS);
           const appCreatedAlbums = savedAlbums ? JSON.parse(savedAlbums) : {};
           const apiAlbumIds = Object.keys(appCreatedAlbums);
           let newCount = 0;
 
-          const updatedAlbums = albums.map(album => {
-            if (album.createdByApp) return album;
-            if (!album.mediaKey) return album;
+          for (const album of currentAlbums) {
+            if (album.createdByApp) continue;
+            if (!album.mediaKey) continue;
 
-            // 既存エントリとの重複チェック（mediaKey / title）
             const alreadyExists = apiAlbumIds.some(id => {
               const data = appCreatedAlbums[id];
               if (data.mediaKey && data.mediaKey === album.mediaKey) return true;
@@ -510,17 +519,31 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
                 createdAt: new Date().toISOString(),
                 registeredAt: new Date().toISOString(),
               };
+              apiAlbumIds.push(album.mediaKey);
               newCount++;
             }
-            return { ...album, createdByApp: true };
-          });
+          }
 
           if (newCount > 0) {
             await AsyncStorage.setItem(STORAGE_KEYS.APP_CREATED_ALBUMS, JSON.stringify(appCreatedAlbums));
-            addDebugLog('ALBUM', `Registered ${newCount} albums as app-created`);
           }
-          setAlbums(updatedAlbums);
-          Alert.alert('完了', `${newCount}件を新規登録しました。\n（表示中の全アルバムをマイアルバムとして扱います）`);
+          addDebugLog('ALBUM', `Registered ${newCount} albums. Total in APP_CREATED_ALBUMS: ${Object.keys(appCreatedAlbums).length}`);
+          Alert.alert(
+            '完了',
+            `${newCount}件を新規登録しました。\n合計: ${Object.keys(appCreatedAlbums).length}件\n\nアルバム一覧を更新します。`,
+            [{ text: 'OK', onPress: () => onRefresh() }]
+          );
+        } catch (error) {
+          Alert.alert('エラー', error.message);
+        }
+        break;
+      case 'showAppCreatedAlbums':
+        try {
+          const savedData = await AsyncStorage.getItem(STORAGE_KEYS.APP_CREATED_ALBUMS);
+          const data = savedData ? JSON.parse(savedData) : {};
+          const keys = Object.keys(data);
+          const summary = keys.map(k => `${data[k].title || '(no title)'} [${k.substring(0, 12)}...]`).join('\n');
+          Alert.alert(`APP_CREATED_ALBUMS (${keys.length}件)`, summary || '（空）');
         } catch (error) {
           Alert.alert('エラー', error.message);
         }
@@ -1281,6 +1304,10 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
 
             <TouchableOpacity style={[styles.debugButton, { backgroundColor: '#E67E22' }]} onPress={() => handleDebugAction('registerAllAlbums')}>
               <Text style={styles.debugButtonText}>📋 全アルバムをマイアルバム登録</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={[styles.debugButton, { backgroundColor: '#8E44AD' }]} onPress={() => handleDebugAction('showAppCreatedAlbums')}>
+              <Text style={styles.debugButtonText}>🔍 APP_CREATED_ALBUMS確認</Text>
             </TouchableOpacity>
 
             <View style={styles.debugLogSection}>
