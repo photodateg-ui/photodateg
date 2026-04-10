@@ -1,6 +1,6 @@
 # SESSION STATE
 
-最終更新: 2026-04-03
+最終更新: 2026-04-10
 
 ## 現在の状況
 
@@ -50,7 +50,8 @@
 | v0.4.0 | BUILD_VERSION更新 | 同上 |
 | v0.4.5（前セッション） | OAuth自動照合追加・prompt:consent追加 | 前セッションがCLI固まる前にデプロイ済み |
 | v0.4.5（2026-04-09） | OAuth自動照合削除・全アルバム登録ボタン追加 | stale closure修正・APP_CREATED_ALBUMS確認ボタン |
-| v0.4.5（2026-04-10） | performCreateAlbum後の遅延loadAlbums追加 | アルバム作成→2秒後にmediaKey自動取得 |
+| v0.4.5（2026-04-10-1） | performCreateAlbum後の遅延loadAlbums追加 | アルバム作成→2秒後にmediaKey自動取得 |
+| v0.4.5（2026-04-10-2） | prompt:consent削除・ゴミ箱復元後WebViewリロード | 毎回同意画面が出る問題修正・ゴミ箱自動更新 |
 
 ## ✅ 解決済み：操作不可バッジが全アルバムに表示される問題（2026-04-10解決）
 
@@ -146,8 +147,9 @@ payload[4] = 別トークン（aEJ6...形式）
 
 ## 残タスク
 
-- **ゴミ箱復元後の自動リロード**（優先度：中）
 - **OAuthトークン切れ時の自動再取得**（優先度：中）
+  - 現状: getStoredAuth()がnullのとき手動でpromptGoogleAsync()が走る
+  - 理想: バックグラウンドで自動リフレッシュ（expo-auth-sessionのrefresh token flow）
 
 ## ✅ 動作確認済み（絶対に触らない）
 
