@@ -694,14 +694,22 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
       console.log('📝 [PERFORM_CREATE] Saving to SELECTED_ALBUM:', JSON.stringify(selectedAlbumData, null, 2));
       await AsyncStorage.setItem(STORAGE_KEYS.SELECTED_ALBUM, JSON.stringify(selectedAlbumData));
       
-      Alert.alert('アルバム作成完了', `「${albumName}」を作成しました。`);
+      Alert.alert(
+        'アルバム作成完了',
+        `「${albumName}」を作成しました。`,
+        [{ text: 'OK', onPress: () => {
+          // 2秒後にWebViewアルバム一覧を再取得してmediaKeyを書き戻す
+          // loadAlbumsのタイトル照合が新アルバムを見つけてAPP_CREATED_ALBUMSに自動記録
+          setTimeout(() => loadAlbums(), 2000);
+        }}]
+      );
     } catch (error) {
       addDebugLog('ALBUM', `Create album error: ${error.message}`);
       Alert.alert('エラー', `アルバム作成に失敗しました\n\n${error.message}`);
     } finally {
       setIsCreatingAlbum(false);
     }
-  }, [onRefresh]);
+  }, [onRefresh, loadAlbums]);
 
   // アルバム作成ボタン押下
   const handleCreateAlbum = useCallback(async () => {

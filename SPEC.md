@@ -847,12 +847,34 @@ Alert OK後もリフレッシュしない。
 
 **根本原因**:
 - `performCreateAlbum` はアルバム作成時に `mediaKey` をAPP_CREATED_ALBUMSに保存しない（OAuth APIレスポンスにmediaKeyがないため）
-- listAlbumsの結果とのタイトル照合が、空白・大文字小文字の差異で失敗することがあった
+- タイトル照合は実装されているが、GoogleフォトWebViewが返すタイトルとOAuth APIで保存したタイトルが微妙に異なる場合がある
 - 以前は通常セッション内でアルバム一覧を通らずに済むケースが多く、顕在化しなかった
 
-**修正（v0.3.161〜）**:
-- タイトル照合を `trim().toLowerCase()` で正規化して比較
-- 照合成功時にmediaKeyをAPP_CREATED_ALBUMSに書き戻し（次回以降はmediaKey照合で確実に一致）
+**修正履歴**:
+
+**v0.3.161**: タイトル照合を `trim().toLowerCase()` で正規化して比較。照合成功時にmediaKeyをAPP_CREATED_ALBUMSに書き戻し。
+
+**v0.4.5（2026-04-10）**: 問題が再発。調査経緯：
+- OAuth `listAlbums`（photoslibrary.googleapis.com）が403 `Request had insufficient authentication scopes` で失敗
+  → `photoslibrary.readonly` スコープが効いていない（Google Cloud Console側の設定問題の可能性）
+  → OAuth経由での自動照合は断念
+- 前セッションが追加したOAuth自動照合コード（2箇所）を削除（403で無駄APIコール）
+- デバッグ調査の結果：APP_CREATED_ALBUMS照合 0/7件マッチ（登録件数=3）
+  → 既存の3件はapiAlbumIdキー・mediaKeyなしで登録されており、タイトル照合も失敗
+  → 追加した「全アルバムをマイアルバム登録」ボタンでmediaKeyキーの3件を追加 → 3/7件マッチに改善
+- 根本修正：`performCreateAlbum`のAlert OK後に2秒の遅延でloadAlbumsを呼び出し
+  → タイトル照合でmediaKeyを取得してAPP_CREATED_ALBUMSに書き戻す（自動化）
+
+**デバッグ用ボタン（デバッグメニュー）**:
+- 「📋 全アルバムをマイアルバム登録」（オレンジ）: 表示中の全アルバムをmediaKeyキーでAPP_CREATED_ALBUMSに登録
+- 「🔍 APP_CREATED_ALBUMS確認」（紫）: 現在の登録内容をAlert表示
+
+**APP_CREATED_ALBUMSのキー形式**:
+- 通常フロー（performCreateAlbum）: `apiAlbumId`（AFxxxxx形式）がキー、mediaKeyなし
+- デバッグボタン登録: `mediaKey`がキー、mediaKeyあり
+- loadAlbumsの照合: mediaKey照合（優先）→ タイトル照合（フォールバック）の2段階
+
+**バッジ表示条件**: `!item.createdByApp`（AlbumSelectWebScreen.js 1138行付近）
 
 ### 7.4 OAuthトークン切れ時の操作不可
 
@@ -867,11 +889,17 @@ Alert OK後もリフレッシュしない。
 
 **対応状況**: 未解決（v0.3.159現在）。ユーザーが手動でPull-to-Refreshする必要がある。
 
-### 7.5 listAlbums APIが0件を返す
+### 7.5 OAuth listAlbumsが403になる
 
-**発生条件**: OAuthの `listAlbums` が0件を返すことがある（スコープ不足等）。
+**発生条件**: `listAlbums`（GET photoslibrary.googleapis.com/v1/albums）が403 `Request had insufficient authentication scopes` で失敗。
 
-**回避策**: Fallback 2（既存の `SELECTED_ALBUM` から引き継ぎ）で実害を回避済み。
+**調査結果（2026-04-09）**:
+- スコープ配列には `photoslibrary.readonly` が含まれているが効いていない
+- `prompt:'consent'` を追加して再認証させても変わらず
+- `createAlbum`・`updateAlbumTitle`・`shareAlbum`は正常動作（appendonly/sharing/edit.appcreateddata は有効）
+- Google Cloud Consoleで `photoslibrary.readonly` が未承認の可能性
+
+**回避策**: OAuth listAlbumsは使用しない。WebView経由のZ5xsfc（非公式API）でアルバム取得。
 
 ---
 

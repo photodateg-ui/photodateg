@@ -48,8 +48,9 @@
 | v0.3.160 | ゴミ箱セッション切れ表示修正、runtimeVersion 0.4.0対応 | 0.4.0(1)バイナリに当たる |
 | v0.3.161 | APP_CREATED_ALBUMS照合改善・mediaKey書き戻し | フィンガープリント不一致で0.4.0(1)に当たらず |
 | v0.4.0 | BUILD_VERSION更新 | 同上 |
-
-※ 0.4.0(2) バイナリインストール後は v0.4.0 OTA が当たる予定
+| v0.4.5（前セッション） | OAuth自動照合追加・prompt:consent追加 | 前セッションがCLI固まる前にデプロイ済み |
+| v0.4.5（2026-04-09） | OAuth自動照合削除・全アルバム登録ボタン追加 | stale closure修正・APP_CREATED_ALBUMS確認ボタン |
+| v0.4.5（2026-04-10） | performCreateAlbum後の遅延loadAlbums追加 | アルバム作成→2秒後にmediaKey自動取得 |
 
 ## ✅ 解決済み：操作不可バッジが全アルバムに表示される問題（2026-04-10解決）
 
