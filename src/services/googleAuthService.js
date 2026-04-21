@@ -222,7 +222,7 @@ export async function uploadToGooglePhotos(accessToken, fileUri, mimeType, album
       if (!addResponse.ok) {
         const addErrorText = await addResponse.text();
         addDebugLog('UPLOAD', 'batchAddMediaItems failed', { status: addResponse.status, error: addErrorText });
-        // アルバム追加失敗はエラーにしない（アップロード自体は成功）
+        result._batchAddFailed = true;
       } else {
         addDebugLog('UPLOAD', 'Successfully added to album');
       }

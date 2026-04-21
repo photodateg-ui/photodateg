@@ -58,6 +58,8 @@ import {
   deleteAlbum,
   getDedupKeyFromMediaKey,
   sessionManager,
+  addPhotosToAlbumWebApi,
+  findUploadedPhotoMediaKey,
 } from '../services/googlePhotosWebApi';
 
 const { width } = Dimensions.get('window');
@@ -1382,9 +1384,33 @@ export default function HomeWebScreen({ route, navigation }) {
           if (result?.newMediaItemResults?.[0]?.status?.message === 'Success') {
             successCount++;
             addDebugLog('UPLOAD', `File ${successCount} uploaded successfully`);
-            
+
             // アップロード成功したmediaItemを保存
             const mediaItem = result.newMediaItemResults[0].mediaItem;
+
+            // batchAddMediaItems失敗時にlaUYfでフォールバック
+            if (result._batchAddFailed && apiAlbumId && mediaItem?.mediaMetadata?.creationTime) {
+              addDebugLog('UPLOAD', 'batchAddMediaItems failed, trying laUYf fallback');
+              try {
+                let albumMediaKey = apiAlbumId;
+                const savedAlbums = await AsyncStorage.getItem('@photov_app_created_albums');
+                if (savedAlbums) {
+                  const appCreatedAlbums = JSON.parse(savedAlbums);
+                  const albumData = appCreatedAlbums[apiAlbumId];
+                  if (albumData?.mediaKey) albumMediaKey = albumData.mediaKey;
+                }
+                const photoMediaKey = await findUploadedPhotoMediaKey(mediaItem.mediaMetadata.creationTime);
+                if (photoMediaKey) {
+                  await addPhotosToAlbumWebApi(albumMediaKey, [photoMediaKey]);
+                  addDebugLog('UPLOAD', 'laUYf fallback success');
+                } else {
+                  addDebugLog('UPLOAD', 'laUYf fallback: photo mediaKey not found in timeline');
+                }
+              } catch (e) {
+                addDebugLog('UPLOAD', 'laUYf fallback failed', { error: e.message });
+              }
+            }
+
             if (mediaItem) {
               uploadedPhotos.push({
                 mediaKey: mediaItem.id,

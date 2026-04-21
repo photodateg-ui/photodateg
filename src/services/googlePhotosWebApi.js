@@ -21,6 +21,7 @@ const RPC_IDS = {
   CREATE_PUBLIC_SHARE: 'yI1ii',    // 公開共有リンク作成（PC Network検証 2026-04-01 リンクを作成ボタン）
   GET_TRASH_ITEMS: 'zy0lHe',      // ゴミ箱一覧取得（PC検証 2026-03-22、空配列でリクエスト）
   GET_PHOTO_DETAIL: 'VrseUb',     // 写真詳細取得（PC検証 2026-03-23、dedupKeyがレスポンス[3]に含まれる）
+  ADD_PHOTOS_TO_ALBUM: 'laUYf',   // アルバムに写真追加（PC Network検証済み 2026-04-21）
 };
 
 /**
@@ -966,3 +967,78 @@ export async function moveItemsToTrashBatch(dedupKeys, onProgress = null) {
  * @property {string|null} nextPageId
  * @property {number|null} lastItemTimestamp
  */
+
+/**
+ * 非公式APIでアルバムに写真を追加する
+ * RPC ID: laUYf（PC Network検証済み 2026-04-21）
+ *
+ * @param {string} albumMediaKey - アルバムのmediaKey（AF1Qip...形式）
+ * @param {string[]} photoMediaKeys - 追加する写真のmediaKey配列
+ */
+export async function addPhotosToAlbumWebApi(albumMediaKey, photoMediaKeys) {
+  if (!albumMediaKey || !photoMediaKeys?.length) {
+    throw new Error('albumMediaKeyとphotoMediaKeysが必要です');
+  }
+
+  const requestData = [
+    albumMediaKey,
+    [2, null, [photoMediaKeys.map(k => [k])], null, null, null, [1], null, null, null, null, null, null, 0],
+  ];
+
+  addDebugLog('ADD_TO_ALBUM', 'laUYf start', { albumMediaKey, photoMediaKeys });
+
+  try {
+    const response = await makeApiRequest(RPC_IDS.ADD_PHOTOS_TO_ALBUM, requestData, {
+      maxRetries: 1,
+      sourcePath: `/share/${albumMediaKey}`,
+      extraParams: {
+        'soc-app': '165',
+        'soc-platform': '1',
+        'soc-device': '1',
+      },
+      skipPageId: true,
+    });
+    addDebugLog('ADD_TO_ALBUM', 'laUYf success', { response });
+    return response;
+  } catch (error) {
+    addDebugLog('ADD_TO_ALBUM', 'laUYf failed', { error: error.message });
+    throw error;
+  }
+}
+
+/**
+ * アップロード直後の写真のmediaKeyをタイムラインから取得する
+ * creationTimeで照合し、一致する写真のmediaKeyを返す
+ *
+ * @param {string} creationTimeIso - ISO形式のcreationTime（例: "2026-04-21T11:44:07Z"）
+ * @param {number} retries - リトライ回数（Googleの反映待ち）
+ * @returns {Promise<string|null>} mediaKey または null
+ */
+export async function findUploadedPhotoMediaKey(creationTimeIso, retries = 3) {
+  const targetMs = new Date(creationTimeIso).getTime();
+
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    if (attempt > 1) {
+      await new Promise(r => setTimeout(r, 3000));
+    }
+
+    try {
+      const page = await getItemsByTakenDate(null, 'library', null, 20);
+      const match = page.items.find(item => {
+        if (!item.creationTimestamp) return false;
+        return Math.abs(item.creationTimestamp - targetMs) < 60000; // 1分以内
+      });
+
+      if (match) {
+        addDebugLog('ADD_TO_ALBUM', 'Found mediaKey via timeline', { mediaKey: match.mediaKey, attempt });
+        return match.mediaKey;
+      }
+
+      addDebugLog('ADD_TO_ALBUM', `Timeline match not found (attempt ${attempt}/${retries})`);
+    } catch (e) {
+      addDebugLog('ADD_TO_ALBUM', `Timeline fetch failed (attempt ${attempt})`, { error: e.message });
+    }
+  }
+
+  return null;
+}
