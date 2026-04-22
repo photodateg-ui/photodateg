@@ -786,13 +786,14 @@ function parseTrashItems(response) {
  * @param {string} apiAlbumId - 削除するアルバムのID（AF1Qip...形式）
  * @returns {Promise<any>} 削除結果
  */
-export async function deleteAlbum(apiAlbumId) {
-  if (!apiAlbumId) {
-    throw new Error('apiAlbumIdが必要です');
+export async function deleteAlbum(shortId, mediaKey) {
+  if (!shortId && !mediaKey) {
+    throw new Error('shortIdまたはmediaKeyが必要です');
   }
 
-  // 1 = アルバム一覧からの削除コンテキスト（2 = アルバム内からの削除、どちらも動作する）
-  const requestData = [null, null, [[apiAlbumId, null, 1]]];
+  // 実際のWebのペイロード: [[shortId(45文字), mediaKey(73文字), 1]]
+  // shortIdが不明な場合はmediaKeyのみで試みる（PC側に反映されない可能性あり）
+  const requestData = [null, null, [[shortId || mediaKey, mediaKey || shortId, 1]]];
 
   try {
     // maxRetries: 1 → DELETEはリトライ不要（成功時はペイロードなしで返る）

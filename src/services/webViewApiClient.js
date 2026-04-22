@@ -271,6 +271,7 @@ function parseAlbum(itemData) {
 
   return {
     mediaKey: itemData?.[0],
+    shortId: extData?.[8] || null,
     ownerActorId: itemData?.[6]?.[0],
     title: extData?.[1],
     thumb: itemData?.[1]?.[0],

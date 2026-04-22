@@ -267,6 +267,7 @@ export default function HomeWebScreen({ route, navigation }) {
 
   // 既存の変数名を維持（後方互換性）
   const albumMediaKey = albumInfo.mediaKey;
+  const albumShortId = albumInfo.shortId || null;
   const albumTitle = albumInfo.title;
   const authKey = albumInfo.authKey;
   const apiAlbumId = albumInfo.apiAlbumId
@@ -1815,8 +1816,8 @@ export default function HomeWebScreen({ route, navigation }) {
                   style: 'destructive',
                   onPress: async () => {
                     try {
-                      addDebugLog('DELETE_ALBUM', `Deleting album: ${apiAlbumId}`);
-                      await deleteAlbum(apiAlbumId);
+                      addDebugLog('DELETE_ALBUM', `Deleting album: shortId=${albumShortId} mediaKey=${albumMediaKey}`);
+                      await deleteAlbum(albumShortId, albumMediaKey);
                       addDebugLog('DELETE_ALBUM', 'deleteAlbum succeeded');
                       // SELECTED_ALBUMをクリア（APP_CREATED_ALBUMSはAlbumSelectWebScreenで管理）
                       await AsyncStorage.removeItem(STORAGE_KEYS.SELECTED_ALBUM);

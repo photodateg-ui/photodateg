@@ -832,7 +832,7 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
   // アルバム削除処理
   const performDeleteAlbum = useCallback(async (album) => {
     try {
-      await deleteAlbum(album.apiAlbumId);
+      await deleteAlbum(album.shortId, album.mediaKey);
 
       // APP_CREATED_ALBUMSから削除
       const savedAlbums = await AsyncStorage.getItem(STORAGE_KEYS.APP_CREATED_ALBUMS);
@@ -1111,6 +1111,7 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
 
       const selectedAlbumData = {
         mediaKey: album.mediaKey,
+        shortId: album.shortId || null,
         title: album.title,
         isShared: album.isShared,
         authKey: album.authKey,
