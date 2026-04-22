@@ -287,6 +287,9 @@ function parseAlbum(itemData) {
  * アルバム一覧ページをパース
  */
 export function parseAlbumsResponse(data) {
+  if (data?.[0]?.[0]) {
+    console.log('[DEBUG_ALBUM_RAW]', JSON.stringify(data[0][0]));
+  }
   return {
     items: data?.[0]?.map(item => parseAlbum(item)).filter(Boolean) || [],
     nextPageId: data?.[1] || null,

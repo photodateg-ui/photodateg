@@ -817,6 +817,7 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
       if (shareResult?.shareableUrl) {
         await Clipboard.setStringAsync(shareResult.shareableUrl);
         Alert.alert('コピー完了', '共有リンクをクリップボードにコピーしました');
+        loadAlbums(true);
         return;
       }
       // URLがレスポンスにない → リロードして再取得
@@ -826,7 +827,7 @@ export default function AlbumSelectWebScreen({ navigation, route }) {
       console.error('共有リンクコピーエラー:', e);
       Alert.alert('エラー', `コピーに失敗しました: ${e.message}`);
     }
-  }, [sessionData]);
+  }, [sessionData, loadAlbums]);
 
   // アルバム削除処理
   const performDeleteAlbum = useCallback(async (album) => {
