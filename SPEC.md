@@ -1,7 +1,7 @@
 # PhotoV / PhotodateG 仕様書
 
-**最終更新: 2026-04-01**
-**バージョン: v0.3.159 (build 42)**
+**最終更新: 2026-04-27**
+**バージョン: v0.4.6 (feature/lauyf-upload)**
 
 ---
 
@@ -363,7 +363,8 @@ const requestData = [null, null, null, null, 1, null, null, 100, [2], 5];
 // data[0] = アルバムの配列
 // 各アルバム itemData:
 {
-  mediaKey:           itemData?.[0],              // WebView上のID（AF1Qip...）
+  mediaKey:           itemData?.[0],              // 長いID（73文字, AF1Qip...形式）削除・snAcKcに使用
+  shortId:            extData?.[8] || null,       // 短いID（45文字, AF1Qip...形式）削除APIで必要（2026-04-22確認）
   thumb:              itemData?.[1]?.[0],          // サムネイルURLベース
   ownerActorId:       itemData?.[6]?.[0],
   // 拡張データ extData = itemData?.at(-1)?.[72930366]
@@ -707,7 +708,7 @@ for (const line of lines) {
 
 ### 5.7 アルバム削除
 
-**RPC ID**: `nV6Qv`（実機Network検証済み 2026-02-25）
+**RPC ID**: `nV6Qv`（実機Network検証済み 2026-02-25、PC反映確認済み 2026-04-22）
 
 **実行方法**: native fetch（sessionManager経由、`makeApiRequest`）
 
@@ -715,10 +716,23 @@ for (const line of lines) {
 
 **ペイロード**:
 ```javascript
+// [null, null, [[shortId(45文字), mediaKey(73文字), 1]]]
+// shortId  = Z5xsfc レスポンスの extData[72930366][8]（45文字, AF1Qip...）
+// mediaKey = Z5xsfc レスポンスの itemData[0]（73文字, AF1Qip...）
+// 1 = アルバム一覧からの削除コンテキスト
+const requestData = [null, null, [[shortId, mediaKey, 1]]];
+```
+
+**⚠️ 旧ペイロード（2026-04-22以前・誤り）**:
+```javascript
 // [null, null, [[apiAlbumId, null, 1]]]
-// apiAlbumId = OAuth APIが返すID（"AFS..." 形式）
-// 1 = アルバム一覧からの削除コンテキスト（2はアルバム内からでも動作）
-const requestData = [null, null, [[apiAlbumId, null, 1]]];
+// → アプリ上では消えるが、PCのGoogleフォトWebには反映されなかった
+```
+
+**shortId が null の場合**（新規作成直後でZ5xsfcリストに載っていないアルバム）:
+```javascript
+// フォールバック: [null, null, [[mediaKey, mediaKey, 1]]]
+// PC反映は保証されないが、アプリ上では消える
 ```
 
 **注意**: レスポンスにペイロードがない（空レスポンス）= 成功と判断する:
@@ -1071,8 +1085,10 @@ response[0][3]  // dedupKey
 ### nV6Qv（アルバム削除）
 
 ```javascript
-// ペイロード
-[null, null, [[apiAlbumId, null, 1]]]
+// ペイロード（2026-04-22 PC反映確認済み）
+[null, null, [[shortId, mediaKey, 1]]]
+// shortId  = extData[72930366][8]（45文字）
+// mediaKey = itemData[0]（73文字）
 
 // source-path: /albums
 
