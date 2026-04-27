@@ -1399,7 +1399,13 @@ export default function HomeWebScreen({ route, navigation }) {
             //   1. batchAddMediaItems失敗（isSuccess + _batchAddFailed）
             //   2. 既存写真アップロード（isAlreadyExists）
             const needsLaUYf = apiAlbumId && (result._batchAddFailed || isAlreadyExists);
-            const creationTimeIso = mediaItem?.mediaMetadata?.creationTime ?? null;
+            let creationTimeIso = mediaItem?.mediaMetadata?.creationTime ?? null;
+            if (!creationTimeIso && asset.assetId) {
+              try {
+                const assetInfo = await MediaLibrary.getAssetInfoAsync(asset.assetId);
+                if (assetInfo?.creationTime) creationTimeIso = new Date(assetInfo.creationTime).toISOString();
+              } catch (_) {}
+            }
 
             if (needsLaUYf && creationTimeIso) {
               addDebugLog('UPLOAD', 'Trying laUYf to add to album');
