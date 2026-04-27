@@ -1024,7 +1024,8 @@ export async function findUploadedPhotoMediaKey(creationTimeIso, retries = 3) {
     }
 
     try {
-      const page = await getItemsByTakenDate(null, 'library', null, 20);
+      // targetMsを起点に検索（既存写真・古い写真でも日付付近から取得できる）
+      const page = await getItemsByTakenDate(targetMs, 'library', null, 50);
       const match = page.items.find(item => {
         if (!item.creationTimestamp) return false;
         return Math.abs(item.creationTimestamp - targetMs) < 60000; // 1分以内

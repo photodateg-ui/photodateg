@@ -1382,16 +1382,27 @@ export default function HomeWebScreen({ route, navigation }) {
             apiAlbumId // PhotoV作成アルバムの場合のみアルバムに追加
           );
 
-          if (result?.newMediaItemResults?.[0]?.status?.message === 'Success') {
+          const resultItem = result?.newMediaItemResults?.[0];
+          const statusMsg = resultItem?.status?.message;
+          const mediaItem = resultItem?.mediaItem;
+          const isSuccess = statusMsg === 'Success';
+          const isAlreadyExists = statusMsg === 'ALREADY_EXISTS';
+
+          if (isSuccess || isAlreadyExists) {
             successCount++;
-            addDebugLog('UPLOAD', `File ${successCount} uploaded successfully`);
+            addDebugLog('UPLOAD', isSuccess
+              ? `File ${successCount} uploaded successfully`
+              : `File ${successCount} already exists in Google Photos, adding to album`
+            );
 
-            // アップロード成功したmediaItemを保存
-            const mediaItem = result.newMediaItemResults[0].mediaItem;
+            // laUYfでアルバム追加が必要なケース:
+            //   1. batchAddMediaItems失敗（isSuccess + _batchAddFailed）
+            //   2. 既存写真アップロード（isAlreadyExists）
+            const needsLaUYf = apiAlbumId && (result._batchAddFailed || isAlreadyExists);
+            const creationTimeIso = mediaItem?.mediaMetadata?.creationTime ?? null;
 
-            // batchAddMediaItems失敗時にlaUYfでフォールバック
-            if (result._batchAddFailed && apiAlbumId && mediaItem?.mediaMetadata?.creationTime) {
-              addDebugLog('UPLOAD', 'batchAddMediaItems failed, trying laUYf fallback');
+            if (needsLaUYf && creationTimeIso) {
+              addDebugLog('UPLOAD', 'Trying laUYf to add to album');
               try {
                 let albumMediaKey = apiAlbumId;
                 const savedAlbums = await AsyncStorage.getItem('@photov_app_created_albums');
@@ -1400,33 +1411,32 @@ export default function HomeWebScreen({ route, navigation }) {
                   const albumData = appCreatedAlbums[apiAlbumId];
                   if (albumData?.mediaKey) albumMediaKey = albumData.mediaKey;
                 }
-                const photoMediaKey = await findUploadedPhotoMediaKey(mediaItem.mediaMetadata.creationTime);
+                const photoMediaKey = await findUploadedPhotoMediaKey(creationTimeIso);
                 if (photoMediaKey) {
                   await addPhotosToAlbumWebApi(albumMediaKey, [photoMediaKey]);
-                  addDebugLog('UPLOAD', 'laUYf fallback success');
+                  addDebugLog('UPLOAD', 'laUYf success');
                 } else {
-                  addDebugLog('UPLOAD', 'laUYf fallback: photo mediaKey not found in timeline');
+                  addDebugLog('UPLOAD', 'laUYf: photo not found in timeline');
                 }
               } catch (e) {
-                addDebugLog('UPLOAD', 'laUYf fallback failed', { error: e.message });
+                addDebugLog('UPLOAD', 'laUYf failed', { error: e.message });
               }
             }
 
-            if (mediaItem) {
-              uploadedPhotos.push({
-                mediaKey: mediaItem.id,
-                // baseUrlが未定義の場合、ローカルURIをthumbとして使用（楽観的表示）
-                thumb: mediaItem.baseUrl ? (mediaItem.baseUrl + '=w200-h200-c') : asset.uri,
-                url: mediaItem.baseUrl ? (mediaItem.baseUrl + '=w1920-h1080') : asset.uri,
-                fullUrl: mediaItem.baseUrl ? (mediaItem.baseUrl + '=d') : asset.uri,
-                timestamp: mediaItem.mediaMetadata?.creationTime ? new Date(mediaItem.mediaMetadata.creationTime).getTime() : Date.now(),
-                creationTimestamp: mediaItem.mediaMetadata?.creationTime ? new Date(mediaItem.mediaMetadata.creationTime).getTime() : Date.now(),
-                isVideo: mediaItem.mimeType?.startsWith('video/') || false,
-                resWidth: parseInt(mediaItem.mediaMetadata?.width) || 0,
-                resHeight: parseInt(mediaItem.mediaMetadata?.height) || 0,
-                apiMediaItemId: mediaItem.id,
-              });
-              // AsyncStorageに保存（削除機能で使用）
+            // 楽観的表示（ALREADY_EXISTSでmediaItemがない場合はローカルURIで代替）
+            uploadedPhotos.push({
+              mediaKey: mediaItem?.id || `dup_${Date.now()}`,
+              thumb: mediaItem?.baseUrl ? (mediaItem.baseUrl + '=w200-h200-c') : asset.uri,
+              url: mediaItem?.baseUrl ? (mediaItem.baseUrl + '=w1920-h1080') : asset.uri,
+              fullUrl: mediaItem?.baseUrl ? (mediaItem.baseUrl + '=d') : asset.uri,
+              timestamp: mediaItem?.mediaMetadata?.creationTime ? new Date(mediaItem.mediaMetadata.creationTime).getTime() : Date.now(),
+              creationTimestamp: mediaItem?.mediaMetadata?.creationTime ? new Date(mediaItem.mediaMetadata.creationTime).getTime() : Date.now(),
+              isVideo: mediaItem?.mimeType?.startsWith('video/') || false,
+              resWidth: parseInt(mediaItem?.mediaMetadata?.width) || 0,
+              resHeight: parseInt(mediaItem?.mediaMetadata?.height) || 0,
+              apiMediaItemId: mediaItem?.id || null,
+            });
+            if (mediaItem?.id) {
               await AsyncStorage.setItem(`@photov_api_id_${mediaItem.id}`, mediaItem.id);
               addDebugLog('UPLOAD', `Saved API ID mapping: ${mediaItem.id}`);
             }
